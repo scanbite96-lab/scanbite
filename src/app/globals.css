@@ -39,12 +39,13 @@ body {
   scrollbar-width: none;
 }
 
-/* Print styles for QR tent cards */
+/* Print styles for QR tent cards & KOT Thermal Slips */
 @media print {
   body * {
     visibility: hidden;
   }
-  #printable-qr-grid, #printable-qr-grid * {
+  #printable-qr-grid, #printable-qr-grid *,
+  #printable-kot-slip, #printable-kot-slip * {
     visibility: visible;
   }
   #printable-qr-grid {
@@ -56,6 +57,18 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 1.5rem !important;
     padding: 1rem !important;
+  }
+  #printable-kot-slip {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    font-size: 11px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
   .no-print {
     display: none !important;

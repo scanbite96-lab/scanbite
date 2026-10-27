@@ -144,6 +144,28 @@ export default function CustomerTableMenu() {
     }
   }, [cart, cartLoaded, slug, tableParam]);
 
+  // Soft Chime for Customer when food is ready/served
+  const playCustomerAlertChime = () => {
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(659.25, now); // E5
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } catch {
+      // ignore
+    }
+  };
+
   // 4. Fetch table orders & notify on live status changes
   const fetchOrders = async () => {
     if (!restaurant || !currentTable) return;
@@ -158,8 +180,11 @@ export default function CustomerTableMenu() {
             if (ord.status === "cooking") {
               showToast(`👨‍🍳 Chef has started cooking Order #${ord.id.slice(-4)}!`);
             } else if (ord.status === "ready") {
+              playCustomerAlertChime();
+              if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([200, 100, 200]);
               showToast(`🔔 Order #${ord.id.slice(-4)} is ready to serve!`);
             } else if (ord.status === "served") {
+              playCustomerAlertChime();
               showToast(`✅ Order #${ord.id.slice(-4)} served. Enjoy your meal!`);
             }
           }
@@ -353,6 +378,8 @@ export default function CustomerTableMenu() {
       const order: Order = await res.json();
 
       setCart({});
+      setAppliedCoupon(null);
+      setCouponInput("");
       if (typeof window !== "undefined") {
         localStorage.removeItem(`scanbite_cart_${slug}_${tableParam}`);
       }
@@ -365,6 +392,29 @@ export default function CustomerTableMenu() {
     } finally {
       setIsPlacingOrder(false);
     }
+  };
+
+  // Generate WhatsApp Bill Receipt Link
+  const generateWhatsAppBillUri = (ord: Order) => {
+    if (!restaurant) return "#";
+    const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
+    const itemsList = ord.items.map((it) => `• ${it.quantity}x ${it.name} (${restaurant.currencySymbol}${it.price * it.quantity})`).join("%0A");
+    const discountText = ord.discount && ord.discount > 0 ? `%0A🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
+    const text = `🍽️ *${encodeURIComponent(restaurant.name)}*%0A` +
+      `📍 Table: ${encodeURIComponent(ord.tableNumber)}%0A` +
+      `🧾 Order: %23${ord.id.slice(-4)}%0A` +
+      `━━━━━━━━━━━━━━━━%0A` +
+      `${itemsList}%0A` +
+      `━━━━━━━━━━━━━━━━%0A` +
+      `Subtotal: ${restaurant.currencySymbol}${ord.subtotal}%0A` +
+      `Taxes (GST ${restaurant.taxRatePercent}%): ${restaurant.currencySymbol}${ord.tax}` +
+      `${discountText}%0A` +
+      `*Grand Total: ${restaurant.currencySymbol}${ord.total}*%0A` +
+      `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})%0A` +
+      (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}%0A` : "") +
+      `%0AThank you for dining with us! 🙏`;
+
+    return phone ? `https://wa.me/91${phone}?text=${text}` : `https://wa.me/?text=${text}`;
   };
 
   // Submit Star Rating
@@ -410,6 +460,20 @@ export default function CustomerTableMenu() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-orange-50/50">
         <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4" />
         <p className="text-slate-600 font-medium text-sm">Loading delicious menu...</p>
+      </div>
+    );
+  }
+
+  if (restaurant && restaurant.isActive === false) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
+        <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4 shadow-sm">
+          <Clock className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-black text-slate-800 mb-2">Service Temporarily Paused</h2>
+        <p className="text-slate-500 text-sm max-w-sm mb-6">
+          {restaurant.name} has temporarily paused online digital ordering. Please ask the restaurant staff or waiter for assistance.
+        </p>
       </div>
     );
   }
@@ -1039,6 +1103,13 @@ export default function CustomerTableMenu() {
                         ))}
                       </div>
 
+                      {order.discount && order.discount > 0 ? (
+                        <div className="flex justify-between text-xs text-emerald-600 font-semibold mb-1">
+                          <span>{t.discount} {order.couponCode ? `(${order.couponCode})` : ""}</span>
+                          <span>-{restaurant.currencySymbol}{order.discount}</span>
+                        </div>
+                      ) : null}
+
                       <div className="pt-2 border-t border-slate-200/80 flex justify-between items-center text-xs font-bold">
                         <span className="text-slate-600">{t.grandTotal}</span>
                         <span className="text-slate-900 text-sm">
@@ -1047,23 +1118,18 @@ export default function CustomerTableMenu() {
                         </span>
                       </div>
 
-                      {/* UPI QR Code for this order if unpaid */}
-                      {order.paymentMethod === "upi_online" && order.paymentStatus !== "paid" && (
-                        <div className="mt-3 pt-3 border-t border-slate-200 text-center">
-                          <p className="text-[10px] font-bold text-slate-600 mb-2">Scan & Pay via UPI:</p>
-                          {upiQrDataUrl && (
-                            <img
-                              src={upiQrDataUrl}
-                              alt="UPI QR Code"
-                              className="w-32 h-32 mx-auto rounded-lg border border-slate-200 p-1 bg-white shadow-sm"
-                            />
-                          )}
-                          <a
-                            href={upiIntentUri}
-                            className="inline-block mt-2 text-[11px] font-bold text-orange-600 hover:underline"
-                          >
-                            Open in UPI App →
-                          </a>
+                      {/* Order Payment Status / UPI Box */}
+                      {order.paymentStatus === "paid" ? (
+                        <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 py-1.5 rounded-lg border border-emerald-200">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>{t.paymentCompleted} ({order.paymentMethod?.replace("_", " ")})</span>
+                        </div>
+                      ) : order.paymentMethod === "upi_online" ? (
+                        <OrderUpiBox order={order} restaurant={restaurant} tableNumber={currentTable?.tableNumber} />
+                      ) : (
+                        <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+                          <span className="font-semibold">{t.paymentCounterCash}</span>
+                          <span className="font-bold text-[11px] bg-amber-200/60 px-2 py-0.5 rounded">{t.payAtCounter}</span>
                         </div>
                       )}
 
@@ -1128,6 +1194,65 @@ export default function CustomerTableMenu() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function OrderUpiBox({
+  order,
+  restaurant,
+  tableNumber,
+}: {
+  order: Order;
+  restaurant: Restaurant;
+  tableNumber?: string;
+}) {
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+
+  const uri = useMemo(() => {
+    const vpa = restaurant.upiId || "restaurant@upi";
+    const name = encodeURIComponent(restaurant.name);
+    const tableTag = encodeURIComponent(tableNumber || order.tableNumber || "Table");
+    const amount = Number(order.total).toFixed(2);
+    return `upi://pay?pa=${vpa}&pn=${name}&am=${amount}&cu=INR&tn=Bill%20Order%20${order.id.slice(-4)}%20${tableTag}`;
+  }, [restaurant, order, tableNumber]);
+
+  useEffect(() => {
+    QRCode.toDataURL(uri, {
+      width: 220,
+      margin: 1,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then(setQrUrl)
+      .catch(() => setQrUrl(null));
+  }, [uri]);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-200 text-center bg-orange-50/60 p-3 rounded-xl border border-orange-100">
+      <p className="text-[11px] font-bold text-orange-950 mb-1">
+        Scan & Pay via UPI for Order #{order.id.slice(-4)}:
+      </p>
+      <p className="text-[10px] text-slate-500 mb-2">
+        VPA: <strong>{restaurant.upiId || "restaurant@upi"}</strong> • Amount: <strong>{restaurant.currencySymbol}{order.total}</strong>
+      </p>
+      {qrUrl ? (
+        <img
+          src={qrUrl}
+          alt={`UPI QR Code for Order #${order.id}`}
+          className="w-36 h-36 mx-auto rounded-lg border border-slate-200 p-1.5 bg-white shadow-sm"
+        />
+      ) : (
+        <div className="w-36 h-36 mx-auto bg-slate-100 rounded-lg animate-pulse flex items-center justify-center text-xs text-slate-400">
+          Generating QR...
+        </div>
+      )}
+      <a
+        href={uri}
+        className="inline-flex items-center gap-1.5 mt-2.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-sm transition active:scale-95"
+      >
+        <span>Open in UPI App (GPay / PhonePe)</span>
+        <ExternalLink className="w-3 h-3" />
+      </a>
     </div>
   );
 }

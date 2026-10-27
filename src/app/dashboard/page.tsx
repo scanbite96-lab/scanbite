@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
+import Link from "next/link";
 import QRCode from "qrcode";
 import { 
   Restaurant, 
@@ -580,9 +581,24 @@ export default function RestaurantDashboard() {
               <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
               <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
             </a>
+
+            <Link
+              href="/admin"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 text-xs font-bold text-amber-300 border border-amber-600/40 transition"
+              title="Super Admin Master Console"
+            >
+              <span>👑 Super Admin</span>
+            </Link>
           </div>
         </div>
       </header>
+
+      {/* Account Suspended Alert */}
+      {restaurant.isActive === false && (
+        <div className="bg-rose-600 text-white p-3 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+          <span>⚠️ Account Suspended: Customer digital QR ordering is currently disabled for this restaurant. Please contact platform admin to renew subscription.</span>
+        </div>
+      )}
 
       {/* Real-time Waiter Calls Bar */}
       {pendingRequests.length > 0 && (
@@ -820,6 +836,13 @@ export default function RestaurantDashboard() {
 
                       {/* Ticket Footer */}
                       <div className="pt-3 border-t border-slate-100">
+                        {order.discount && order.discount > 0 ? (
+                          <div className="flex items-center justify-between text-xs text-emerald-600 font-semibold mb-1.5">
+                            <span>Discount ({order.couponCode || "Coupon"})</span>
+                            <span>-{restaurant.currencySymbol}{order.discount}</span>
+                          </div>
+                        ) : null}
+
                         <div className="flex items-center justify-between text-xs font-bold text-slate-800 mb-3">
                           <span>Total Amount</span>
                           <span className="text-base text-slate-900">
@@ -1060,7 +1083,7 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* Tables Grid */}
-            <div id="printable-qr-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <div id="printable-qr-grid" className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 ${selectedKotOrder ? "no-print" : ""}`}>
               {restaurant.tables.map((table) => {
                 const qrImage = tableQRs[table.id];
                 const dinerUrl = `/r/${restaurant.slug}/t/${table.id}`;
@@ -1241,7 +1264,7 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* 80mm Receipt Look */}
-            <div className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl font-mono text-xs text-slate-800 space-y-2">
+            <div id="printable-kot-slip" className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl font-mono text-xs text-slate-800 space-y-2">
               <div className="text-center pb-2 border-b border-dashed border-slate-300">
                 <div className="font-extrabold uppercase">{restaurant.name}</div>
                 <div className="text-[10px] text-slate-500">*** KITCHEN ORDER TICKET (KOT) ***</div>
@@ -1263,6 +1286,13 @@ export default function RestaurantDashboard() {
                   </div>
                 ))}
               </div>
+
+              {selectedKotOrder.discount && selectedKotOrder.discount > 0 ? (
+                <div className="flex justify-between text-xs py-0.5 border-t border-dashed border-slate-300">
+                  <span>Discount ({selectedKotOrder.couponCode || "Promo"})</span>
+                  <span>-{restaurant.currencySymbol}{selectedKotOrder.discount}</span>
+                </div>
+              ) : null}
 
               <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between font-bold">
                 <span>Total Amount</span>

@@ -52,12 +52,26 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
 
 export const getTableOrders = async (restaurantId: string, tableId: string): Promise<Order[]> => {
   try {
+    const cleanNum = tableId.replace(/\D/g, "");
+    const matchingTable = await prisma.table.findFirst({
+      where: {
+        restaurantId,
+        OR: [
+          { id: tableId },
+          { tableNumber: tableId },
+          ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }, { tableNumber: { contains: cleanNum } }] : []),
+        ],
+      },
+    });
+
     const orders = await prisma.order.findMany({
       where: {
         restaurantId,
         OR: [
           { tableId },
-          { tableNumber: { contains: tableId } },
+          { tableNumber: tableId },
+          ...(matchingTable ? [{ tableId: matchingTable.id }, { tableNumber: matchingTable.tableNumber }] : []),
+          ...(cleanNum ? [{ tableNumber: { contains: cleanNum } }] : []),
         ],
       },
       include: { items: true },
@@ -189,6 +203,10 @@ export const updateOrderStatus = async (
     return {
       ...updated,
       status: updated.status as OrderStatus,
+      rating: updated.rating ?? undefined,
+      reviewFeedback: updated.reviewFeedback ?? undefined,
+      discount: updated.discount ?? 0,
+      couponCode: updated.couponCode ?? undefined,
       items: updated.items.map((it) => ({
         menuItemId: it.menuItemId,
         name: it.name,
@@ -303,6 +321,178 @@ export const toggleItemAvailability = async (slug: string, itemId: string): Prom
     return updated as unknown as MenuItem;
   } catch (err) {
     console.error("Prisma toggleItemAvailability error:", err);
+    return null;
+  }
+};
+
+export const getSuperAdminOverview = async () => {
+  try {
+    const restaurants = await prisma.restaurant.findMany({
+      include: {
+        tables: true,
+        orders: {
+          select: { total: true, status: true, createdAt: true },
+        },
+        _count: {
+          select: { menuItems: true, tables: true, orders: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    let totalPlatformGmv = 0;
+    let totalOrders = 0;
+    let totalTables = 0;
+    let activeRestaurants = 0;
+    const planBreakdown = {
+      trial: 0,
+      starter: 0,
+      pro: 0,
+      enterprise: 0,
+    };
+
+    const restaurantRows = restaurants.map((r) => {
+      const gmv = r.orders.reduce((sum, o) => sum + (o.total || 0), 0);
+      totalPlatformGmv += gmv;
+      totalOrders += r._count.orders;
+      totalTables += r._count.tables;
+      if (r.isActive) activeRestaurants++;
+
+      const planKey = (r.plan || "starter") as keyof typeof planBreakdown;
+      if (planBreakdown[planKey] !== undefined) {
+        planBreakdown[planKey]++;
+      } else {
+        planBreakdown.starter++;
+      }
+
+      return {
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        phone: r.phone,
+        city: r.city || "Delhi NCR",
+        ownerName: r.ownerName || "Partner",
+        ownerEmail: r.ownerEmail,
+        plan: r.plan || "starter",
+        planExpiresAt: r.planExpiresAt ? r.planExpiresAt.toISOString() : null,
+        isActive: r.isActive,
+        createdAt: r.createdAt.toISOString(),
+        tablesCount: r._count.tables,
+        menuItemsCount: r._count.menuItems,
+        ordersCount: r._count.orders,
+        gmv: Math.round(gmv),
+      };
+    });
+
+    // Calculate Estimated MRR based on plans: Starter ₹999, Pro ₹2,499, Enterprise ₹4,999
+    const estimatedMrr =
+      planBreakdown.starter * 999 +
+      planBreakdown.pro * 2499 +
+      planBreakdown.enterprise * 4999;
+
+    const setting = await prisma.platformSetting.findUnique({
+      where: { id: "global" },
+    });
+
+    return {
+      metrics: {
+        totalRestaurants: restaurants.length,
+        activeRestaurants,
+        totalTables,
+        totalOrders,
+        totalPlatformGmv: Math.round(totalPlatformGmv),
+        estimatedMrr,
+        planBreakdown,
+      },
+      restaurants: restaurantRows,
+      platformSetting: setting || {
+        id: "global",
+        broadcastMessage: null,
+        isMaintenance: false,
+        supportPhone: "+91 98765 43210",
+      },
+    };
+  } catch (err) {
+    console.error("Prisma getSuperAdminOverview error:", err);
+    return null;
+  }
+};
+
+export const updateSuperAdminRestaurant = async (
+  restaurantId: string,
+  data: {
+    isActive?: boolean;
+    plan?: string;
+    city?: string;
+    ownerName?: string;
+    phone?: string;
+    daysToAdd?: number;
+  }
+) => {
+  try {
+    const updatePayload: Record<string, unknown> = {};
+    if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
+    if (data.plan !== undefined) updatePayload.plan = data.plan;
+    if (data.city !== undefined) updatePayload.city = data.city;
+    if (data.ownerName !== undefined) updatePayload.ownerName = data.ownerName;
+    if (data.phone !== undefined) updatePayload.phone = data.phone;
+
+    if (data.daysToAdd) {
+      const current = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
+      const baseDate = current?.planExpiresAt && current.planExpiresAt > new Date()
+        ? current.planExpiresAt
+        : new Date();
+      const newExpiry = new Date(baseDate.getTime() + data.daysToAdd * 24 * 60 * 60 * 1000);
+      updatePayload.planExpiresAt = newExpiry;
+    }
+
+    const updated = await prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: updatePayload,
+    });
+    return updated;
+  } catch (err) {
+    console.error("Prisma updateSuperAdminRestaurant error:", err);
+    return null;
+  }
+};
+
+export const deleteRestaurant = async (restaurantId: string) => {
+  try {
+    await prisma.restaurant.delete({
+      where: { id: restaurantId },
+    });
+    return true;
+  } catch (err) {
+    console.error("Prisma deleteRestaurant error:", err);
+    return false;
+  }
+};
+
+export const updatePlatformSetting = async (
+  broadcastMessage?: string | null,
+  isMaintenance?: boolean,
+  supportPhone?: string
+) => {
+  try {
+    const data: Record<string, unknown> = {};
+    if (broadcastMessage !== undefined) data.broadcastMessage = broadcastMessage;
+    if (isMaintenance !== undefined) data.isMaintenance = isMaintenance;
+    if (supportPhone !== undefined) data.supportPhone = supportPhone;
+
+    const setting = await prisma.platformSetting.upsert({
+      where: { id: "global" },
+      update: data,
+      create: {
+        id: "global",
+        broadcastMessage: broadcastMessage || null,
+        isMaintenance: isMaintenance || false,
+        supportPhone: supportPhone || "+91 98765 43210",
+      },
+    });
+    return setting;
+  } catch (err) {
+    console.error("Prisma updatePlatformSetting error:", err);
     return null;
   }
 };

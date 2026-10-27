@@ -79,6 +79,12 @@ export type Restaurant = {
   logoUrl?: string | null;
   phone?: string | null;
   address?: string | null;
+  city?: string | null;
+  ownerName?: string | null;
+  ownerEmail?: string | null;
+  plan?: "trial" | "starter" | "pro" | "enterprise" | string;
+  planExpiresAt?: string | null;
+  isActive?: boolean;
   currency: string;
   currencySymbol: string;
   taxRatePercent: number;
@@ -86,4 +92,19 @@ export type Restaurant = {
   categories: DishCategory[];
   menuItems: MenuItem[];
   tables: Table[];
+};
+
+export type SuperAdminMetrics = {
+  totalRestaurants: number;
+  activeRestaurants: number;
+  totalTables: number;
+  totalOrders: number;
+  totalPlatformGmv: number;
+  estimatedMrr: number;
+  planBreakdown: {
+    trial: number;
+    starter: number;
+    pro: number;
+    enterprise: number;
+  };
 };

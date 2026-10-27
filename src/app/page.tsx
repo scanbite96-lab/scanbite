@@ -43,6 +43,19 @@ export default function SaaSPlatformHome() {
 
           <div className="flex items-center gap-3">
             <Link
+              href="/admin"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 text-[11px] font-black text-amber-300 border border-amber-500/40 transition shadow-sm"
+              title="Platform Owner Command Center"
+            >
+              <span>👑 Super Admin</span>
+            </Link>
+            <Link
+              href="/register"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/30 transition active:scale-95"
+            >
+              <span>+ Register Restaurant</span>
+            </Link>
+            <Link
               href="/dashboard"
               className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-2"
             >
@@ -196,6 +209,48 @@ export default function SaaSPlatformHome() {
         </div>
       </section>
 
+      {/* How it Works Section */}
+      <section id="how-it-works" className="py-20 border-t border-slate-800/80 bg-slate-900/30">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-16">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-orange-400 mb-2">Effortless Flow</h2>
+            <p className="text-3xl font-extrabold text-white">How ScanBite Works In 3 Simple Steps</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 relative hover:border-orange-500/40 transition">
+              <div className="w-10 h-10 rounded-xl bg-orange-600 text-white font-black flex items-center justify-center text-lg mb-4">
+                1
+              </div>
+              <h3 className="text-base font-bold text-white mb-2">Guest Scans Table QR</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Customers sit at their table and scan the stylish tent card with their smartphone camera. No app download or sign-up needed.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 relative hover:border-amber-500/40 transition">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center text-lg mb-4">
+                2
+              </div>
+              <h3 className="text-base font-bold text-white mb-2">Browse & Customize Order</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Diners view mouthwatering dish photos, filter veg/non-veg, choose spice levels, add custom cooking notes, and apply coupons.
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-7 relative hover:border-emerald-500/40 transition">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 font-black flex items-center justify-center text-lg mb-4">
+                3
+              </div>
+              <h3 className="text-base font-bold text-white mb-2">Live Kitchen Push & Pay</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Orders instantly appear on the chef&apos;s tablet with sound chimes. Diners track cooking in real time and pay via UPI or cash.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing Section */}
       <section id="pricing" className="py-20 border-t border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -220,9 +275,12 @@ export default function SaaSPlatformHome() {
                 </ul>
               </div>
 
-              <button className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">
+              <Link
+                href="/register"
+                className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs text-center transition block"
+              >
                 Start 14-Day Free Trial
-              </button>
+              </Link>
             </div>
 
             {/* Plan 2: Popular */}
@@ -245,9 +303,12 @@ export default function SaaSPlatformHome() {
                 </ul>
               </div>
 
-              <button className="mt-8 w-full py-3 bg-orange-500 hover:bg-orange-600 text-slate-950 font-black rounded-xl text-xs transition shadow-lg shadow-orange-500/25">
+              <Link
+                href="/register"
+                className="mt-8 w-full py-3 bg-orange-500 hover:bg-orange-600 text-slate-950 font-black rounded-xl text-xs text-center transition shadow-lg shadow-orange-500/25 block"
+              >
                 Get Started with Pro
-              </button>
+              </Link>
             </div>
 
             {/* Plan 3 */}
@@ -265,9 +326,12 @@ export default function SaaSPlatformHome() {
                 </ul>
               </div>
 
-              <button className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">
-                Contact Sales
-              </button>
+              <Link
+                href="/register"
+                className="mt-8 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs text-center transition block"
+              >
+                Start Free Enterprise Trial
+              </Link>
             </div>
           </div>
         </div>

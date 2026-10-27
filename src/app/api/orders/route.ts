@@ -22,24 +22,60 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { restaurantId, tableId, tableNumber, items, subtotal, tax, discount, couponCode, total, customerName, customerPhone, paymentMethod } = body;
+    const { 
+      restaurantId, 
+      tableId, 
+      tableNumber, 
+      items, 
+      subtotal, 
+      tax, 
+      discount, 
+      couponCode, 
+      total, 
+      customerName, 
+      customerPhone, 
+      paymentMethod 
+    } = body;
 
-    if (!restaurantId || !tableId || !items || items.length === 0) {
-      return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
+    if (!restaurantId || !tableId || !items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "Invalid order data: items, restaurantId and tableId are required" }, { status: 400 });
     }
+
+    // Defensive item sanitization
+    const sanitizedItems = items.map((it: any) => {
+      const price = Number(it.price ?? it.unitPrice ?? 0);
+      const quantity = Math.max(1, Number(it.quantity) || 1);
+      return {
+        menuItemId: it.menuItemId || it.id || "item-custom",
+        name: it.name || "Dish Item",
+        price,
+        quantity,
+        isVeg: it.isVeg !== undefined ? Boolean(it.isVeg) : true,
+        notes: it.notes || undefined,
+      };
+    });
+
+    const calculatedSubtotal = Number(subtotal) >= 0 
+      ? Number(subtotal) 
+      : sanitizedItems.reduce((sum: number, it: any) => sum + (it.price * it.quantity), 0);
+
+    const calculatedDiscount = Math.max(0, Number(discount) || 0);
+    const taxable = Math.max(0, calculatedSubtotal - calculatedDiscount);
+    const calculatedTax = Number(tax) >= 0 ? Number(tax) : Number(((taxable * 5) / 100).toFixed(2));
+    const calculatedTotal = Number(total) >= 0 ? Number(total) : Number((taxable + calculatedTax).toFixed(2));
 
     const order = await createOrder({
       restaurantId,
       tableId,
       tableNumber: tableNumber || "Table",
       customerName: customerName || "Guest",
-      customerPhone,
-      items,
-      subtotal,
-      tax,
-      discount: Number(discount) || 0,
+      customerPhone: customerPhone || undefined,
+      items: sanitizedItems,
+      subtotal: calculatedSubtotal,
+      tax: calculatedTax,
+      discount: calculatedDiscount,
       couponCode: couponCode || undefined,
-      total,
+      total: calculatedTotal,
       status: "pending",
       paymentMethod: paymentMethod || "counter_cash",
       paymentStatus: "unpaid",
@@ -50,7 +86,8 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(order, { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error("Order POST error:", err);
     return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
   }
 }

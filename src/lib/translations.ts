@@ -44,6 +44,9 @@ export const translations = {
     ratePrompt: "Tap stars to rate",
     shareOnGoogle: "Share on Google Reviews 🌟",
     thankYouFeedback: "Thank you for dining with us!",
+    paymentCompleted: "Payment Completed",
+    paymentCounterCash: "Payment: Counter Cash",
+    payAtCounter: "Pay at Counter",
   },
   hi: {
     liveTable: "टेबल",
@@ -88,5 +91,8 @@ export const translations = {
     ratePrompt: "रेटिंग देने के लिए स्टार चुनें",
     shareOnGoogle: "Google पर 5-स्टार रिव्यू दें 🌟",
     thankYouFeedback: "हमारे साथ भोजन करने के लिए धन्यवाद!",
+    paymentCompleted: "भुगतान पूर्ण हुआ ✓",
+    paymentCounterCash: "भुगतान: काउंटर पर नकद",
+    payAtCounter: "काउंटर पर भुगतान करें",
   },
 };
