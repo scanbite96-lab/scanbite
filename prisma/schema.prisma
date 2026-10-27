@@ -1,0 +1,112 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Restaurant {
+  id              String           @id @default(cuid())
+  name            String
+  slug            String           @unique
+  tagline         String?
+  phone           String?
+  address         String?
+  currency        String           @default("INR")
+  currencySymbol  String           @default("₹")
+  taxRatePercent  Float            @default(5.0)
+  upiId           String?
+  logoUrl         String?
+  categories      Category[]
+  menuItems       MenuItem[]
+  tables          Table[]
+  orders          Order[]
+  serviceRequests ServiceRequest[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Category {
+  id           String     @id @default(cuid())
+  restaurantId String
+  name         String
+  icon         String     @default("🍽️")
+  sortOrder    Int        @default(0)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  menuItems    MenuItem[]
+}
+
+model MenuItem {
+  id              String      @id @default(cuid())
+  restaurantId    String
+  categoryId      String
+  name            String
+  description     String?
+  price           Float
+  isVeg           Boolean     @default(true)
+  isAvailable     Boolean     @default(true)
+  isBestseller    Boolean     @default(false)
+  spiceLevel      Int         @default(0)
+  prepTimeMinutes Int         @default(10)
+  imageUrl        String?
+  restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category        Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems      OrderItem[]
+}
+
+model Table {
+  id              String           @id @default(cuid())
+  restaurantId    String
+  tableNumber     String
+  seats           Int              @default(4)
+  restaurant      Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders          Order[]
+  serviceRequests ServiceRequest[]
+}
+
+model Order {
+  id             String          @id @default(cuid())
+  restaurantId   String
+  tableId        String
+  tableNumber    String
+  customerName   String?
+  customerPhone  String?
+  subtotal       Float
+  tax            Float
+  total          Float
+  status         String          @default("pending") // pending, cooking, ready, served, completed, cancelled
+  paymentMethod  String          @default("counter_cash")
+  paymentStatus  String          @default("unpaid")
+  restaurant     Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  table          Table           @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  items          OrderItem[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model OrderItem {
+  id         String   @id @default(cuid())
+  orderId    String
+  menuItemId String
+  name       String
+  price      Float
+  quantity   Int
+  isVeg      Boolean  @default(true)
+  notes      String?
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+model ServiceRequest {
+  id           String     @id @default(cuid())
+  restaurantId String
+  tableId      String
+  tableNumber  String
+  type         String     // water, waiter, bill, cleaning
+  status       String     @default("pending") // pending, attended
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  table        Table      @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+}
