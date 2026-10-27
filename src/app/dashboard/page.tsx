@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import QRCode from "qrcode";
 import { 
   Restaurant, 
@@ -15,30 +15,34 @@ import {
   Menu as MenuIcon, 
   Settings, 
   Bell, 
-  CheckCircle, 
-  Clock, 
   Printer, 
   Download, 
   Plus, 
   Search, 
-  Flame, 
   Droplets, 
   Receipt, 
   Volume2, 
   VolumeX, 
-  AlertTriangle,
   RefreshCw,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  X,
+  Store,
+  Check
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
   const [activeTab, setActiveTab] = useState<"kds" | "menu" | "tables" | "settings">("kds");
+  const [restaurantSlug, setRestaurantSlug] = useState("grand-spice");
+  const [availableRestaurants, setAvailableRestaurants] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Sound Chime State
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const prevOrdersCountRef = useRef(0);
 
   // KDS filter
   const [kdsFilter, setKdsFilter] = useState<"active" | "pending" | "cooking" | "ready" | "all">("active");
@@ -49,31 +53,114 @@ export default function RestaurantDashboard() {
   // Menu Search
   const [menuSearch, setMenuSearch] = useState("");
 
-  // Add Table Modal
+  // Add Table Modal State
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [newTableNum, setNewTableNum] = useState("");
   const [newTableSeats, setNewTableSeats] = useState(4);
+  const [isSubmittingTable, setIsSubmittingTable] = useState(false);
 
-  // Add Dish Modal
+  // Add Dish Modal State
   const [isAddDishOpen, setIsAddDishOpen] = useState(false);
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
   const [newDishIsVeg, setNewDishIsVeg] = useState(true);
   const [newDishDesc, setNewDishDesc] = useState("");
+  const [newDishImage, setNewDishImage] = useState("");
+  const [isSubmittingDish, setIsSubmittingDish] = useState(false);
 
-  // Fetch all initial data
+  // Settings Form State
+  const [settingsName, setSettingsName] = useState("");
+  const [settingsCurrency, setSettingsCurrency] = useState("₹");
+  const [settingsTax, setSettingsTax] = useState(5);
+  const [settingsUpi, setSettingsUpi] = useState("");
+  const [settingsPhone, setSettingsPhone] = useState("");
+  const [settingsAddress, setSettingsAddress] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
+
+  // Check URL params on mount for ?slug=...
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const querySlug = sp.get("slug");
+      if (querySlug) setRestaurantSlug(querySlug);
+    }
+  }, []);
+
+  // Web Audio API Synthesizer Chime for New Order Sound
+  const playNewOrderChime = () => {
+    if (!soundEnabled || typeof window === "undefined") return;
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      
+      const playTone = (freq: number, startTime: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.2, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      const now = ctx.currentTime;
+      playTone(587.33, now, 0.25); // D5
+      playTone(880.00, now + 0.15, 0.4); // A5
+      playTone(1174.66, now + 0.3, 0.6); // D6
+    } catch {
+      // AudioContext blocked or not supported
+    }
+  };
+
+  // Fetch all registered restaurants for the switcher
+  useEffect(() => {
+    async function loadRestaurantsList() {
+      try {
+        const res = await fetch("/api/restaurants");
+        if (res.ok) {
+          const list = await res.json();
+          setAvailableRestaurants(list);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadRestaurantsList();
+  }, []);
+
+  // Fetch current restaurant data
   const loadDashboardData = async () => {
     try {
-      const restRes = await fetch("/api/restaurants/grand-spice");
+      const restRes = await fetch(`/api/restaurants/${restaurantSlug}`);
       if (restRes.ok) {
         const restData: Restaurant = await restRes.json();
         setRestaurant(restData);
 
+        // Populate settings fields once
+        if (!settingsName) {
+          setSettingsName(restData.name);
+          setSettingsCurrency(restData.currencySymbol || "₹");
+          setSettingsTax(restData.taxRatePercent || 5);
+          setSettingsUpi(restData.upiId || "");
+          setSettingsPhone(restData.phone || "");
+          setSettingsAddress(restData.address || "");
+        }
+
         // Fetch Orders
         const ordRes = await fetch(`/api/orders?restaurantId=${restData.id}`);
         if (ordRes.ok) {
-          const ordData = await ordRes.json();
+          const ordData: Order[] = await ordRes.json();
+          
+          // Trigger Chime if new orders arrived
+          if (prevOrdersCountRef.current > 0 && ordData.length > prevOrdersCountRef.current) {
+            playNewOrderChime();
+          }
+          prevOrdersCountRef.current = ordData.length;
           setOrders(ordData);
         }
 
@@ -93,9 +180,9 @@ export default function RestaurantDashboard() {
 
   useEffect(() => {
     loadDashboardData();
-    const interval = setInterval(loadDashboardData, 4000); // Poll every 4 seconds for real-time kitchen
+    const interval = setInterval(loadDashboardData, 4000); // 4-second kitchen polling
     return () => clearInterval(interval);
-  }, []);
+  }, [restaurantSlug]);
 
   // Generate QR codes for tables
   useEffect(() => {
@@ -111,7 +198,7 @@ export default function RestaurantDashboard() {
             width: 320,
             margin: 2,
             color: {
-              dark: "#1e293b",
+              dark: "#0f172a",
               light: "#ffffff",
             },
           });
@@ -168,7 +255,6 @@ export default function RestaurantDashboard() {
         body: JSON.stringify({ slug: restaurant.slug, itemId }),
       });
       if (res.ok) {
-        // Optimistic update
         setRestaurant((prev) => {
           if (!prev) return prev;
           return {
@@ -181,6 +267,104 @@ export default function RestaurantDashboard() {
       }
     } catch {
       alert("Failed to toggle availability");
+    }
+  };
+
+  // Add Table Handler
+  const handleAddTableSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restaurant || !newTableNum.trim()) return;
+    setIsSubmittingTable(true);
+    try {
+      const res = await fetch("/api/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId: restaurant.id,
+          tableNumber: newTableNum.trim(),
+          seats: Number(newTableSeats) || 4,
+        }),
+      });
+      if (res.ok) {
+        setNewTableNum("");
+        setIsAddTableOpen(false);
+        loadDashboardData();
+      } else {
+        alert("Failed to add table");
+      }
+    } catch {
+      alert("Error adding table");
+    } finally {
+      setIsSubmittingTable(false);
+    }
+  };
+
+  // Add Dish Handler
+  const handleAddDishSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restaurant || !newDishName.trim() || !newDishPrice) return;
+    setIsSubmittingDish(true);
+    try {
+      const categoryId = newDishCategory || restaurant.categories[0]?.id;
+      const res = await fetch("/api/menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId: restaurant.id,
+          categoryId,
+          name: newDishName.trim(),
+          description: newDishDesc.trim(),
+          price: Number(newDishPrice),
+          isVeg: newDishIsVeg,
+          imageUrl: newDishImage.trim(),
+        }),
+      });
+      if (res.ok) {
+        setNewDishName("");
+        setNewDishPrice("");
+        setNewDishDesc("");
+        setNewDishImage("");
+        setIsAddDishOpen(false);
+        loadDashboardData();
+      } else {
+        alert("Failed to add dish");
+      }
+    } catch {
+      alert("Error adding dish");
+    } finally {
+      setIsSubmittingDish(false);
+    }
+  };
+
+  // Save Settings Handler
+  const handleSaveSettings = async () => {
+    if (!restaurant) return;
+    setIsSavingSettings(true);
+    setSettingsSaveMsg(null);
+    try {
+      const res = await fetch(`/api/restaurants/${restaurant.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: settingsName,
+          currencySymbol: settingsCurrency,
+          taxRatePercent: Number(settingsTax),
+          upiId: settingsUpi,
+          phone: settingsPhone,
+          address: settingsAddress,
+        }),
+      });
+      if (res.ok) {
+        setSettingsSaveMsg("Settings saved successfully to database! ✓");
+        setTimeout(() => setSettingsSaveMsg(null), 3500);
+        loadDashboardData();
+      } else {
+        alert("Failed to save settings");
+      }
+    } catch {
+      alert("Error saving settings");
+    } finally {
+      setIsSavingSettings(false);
     }
   };
 
@@ -210,7 +394,19 @@ export default function RestaurantDashboard() {
   }
 
   if (!restaurant) {
-    return <div className="p-8 text-center text-slate-700">Failed to load restaurant data.</div>;
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-slate-900 text-white text-center">
+        <Store className="w-12 h-12 text-orange-400 mb-3" />
+        <h2 className="text-xl font-bold mb-2">Restaurant Not Found</h2>
+        <p className="text-xs text-slate-400 mb-4">Slug &ldquo;{restaurantSlug}&rdquo; does not exist.</p>
+        <button
+          onClick={() => setRestaurantSlug("grand-spice")}
+          className="px-4 py-2 bg-orange-600 text-white text-xs font-bold rounded-xl"
+        >
+          Switch to Grand Spice Demo
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -224,12 +420,28 @@ export default function RestaurantDashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base text-white tracking-wide">{restaurant.name}</h1>
+                {/* Multi-Restaurant Switcher */}
+                {availableRestaurants.length > 1 ? (
+                  <select
+                    value={restaurantSlug}
+                    onChange={(e) => setRestaurantSlug(e.target.value)}
+                    className="bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm px-2 py-1 rounded-lg focus:outline-none"
+                  >
+                    {availableRestaurants.map((r) => (
+                      <option key={r.slug} value={r.slug}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <h1 className="font-bold text-base text-white tracking-wide">{restaurant.name}</h1>
+                )}
+
                 <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
                   LIVE
                 </span>
               </div>
-              <p className="text-xs text-slate-400">Owner & Kitchen Operations Console</p>
+              <p className="text-xs text-slate-400">Kitchen & Staff Operations Console</p>
             </div>
           </div>
 
@@ -289,16 +501,31 @@ export default function RestaurantDashboard() {
             </button>
           </nav>
 
-          {/* Quick Action: Open Customer Menu in new tab */}
+          {/* Quick Sound Toggle & Test Diner Menu */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSoundEnabled(!soundEnabled);
+                if (!soundEnabled) playNewOrderChime();
+              }}
+              className={`p-2 rounded-xl border transition ${
+                soundEnabled
+                  ? "bg-orange-950/60 border-orange-500/40 text-orange-400"
+                  : "bg-slate-800 border-slate-700 text-slate-400"
+              }`}
+              title={soundEnabled ? "Sound Alerts Active (Click to mute)" : "Sound Muted (Click to enable)"}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
             <a
-              href={`/r/${restaurant.slug}/t/tbl-4`}
+              href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
               target="_blank"
               rel="noopener noreferrer"
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
             >
               <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
-              <span>Test Diner Menu (Table 4)</span>
+              <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
             </a>
           </div>
         </div>
@@ -383,7 +610,7 @@ export default function RestaurantDashboard() {
 
               <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Auto-refreshing every 4s</span>
+                <span>Auto-syncing every 4s • Chime {soundEnabled ? "ON 🔔" : "MUTED"}</span>
               </div>
             </div>
 
@@ -396,12 +623,12 @@ export default function RestaurantDashboard() {
                   When a customer scans a table QR code and submits an order, it appears here instantly!
                 </p>
                 <a
-                  href={`/r/${restaurant.slug}/t/tbl-4`}
+                  href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition"
                 >
-                  Place a Test Order as Table 4 <ChevronRight className="w-4 h-4" />
+                  Place a Test Order as Diner <ChevronRight className="w-4 h-4" />
                 </a>
               </div>
             ) : (
@@ -583,14 +810,14 @@ export default function RestaurantDashboard() {
 
                 <button
                   onClick={() => setIsAddDishOpen(true)}
-                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition"
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
                 >
                   <Plus className="w-4 h-4" /> Add New Dish
                 </button>
               </div>
             </div>
 
-            {/* Menu Items Table / Grid */}
+            {/* Menu Items Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider">
@@ -611,7 +838,7 @@ export default function RestaurantDashboard() {
                         <tr key={item.id} className="hover:bg-slate-50/70 transition">
                           <td className="py-3 px-4 flex items-center gap-3">
                             <img
-                              src={item.imageUrl || ""}
+                              src={item.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80"}
                               alt={item.name}
                               className="w-10 h-10 rounded-lg object-cover bg-slate-100 flex-shrink-0"
                             />
@@ -676,8 +903,15 @@ export default function RestaurantDashboard() {
 
               <div className="flex items-center gap-3">
                 <button
+                  onClick={() => setIsAddTableOpen(true)}
+                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
+                >
+                  <Plus className="w-4 h-4" /> Add Table
+                </button>
+
+                <button
                   onClick={() => window.print()}
-                  className="bg-slate-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow transition"
+                  className="bg-slate-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow transition active:scale-95"
                 >
                   <Printer className="w-4 h-4" /> Print All Tent Cards
                 </button>
@@ -693,7 +927,7 @@ export default function RestaurantDashboard() {
                 return (
                   <div
                     key={table.id}
-                    className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center text-center relative overflow-hidden group hover:border-orange-500 transition"
+                    className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center text-center relative overflow-hidden group hover:border-orange-500 transition break-inside-avoid"
                   >
                     {/* Header */}
                     <div className="mb-2">
@@ -759,13 +993,21 @@ export default function RestaurantDashboard() {
               <p className="text-xs text-slate-500">Configure your business details, taxes, and UPI payment info.</p>
             </div>
 
+            {settingsSaveMsg && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                <span>{settingsSaveMsg}</span>
+              </div>
+            )}
+
             <div className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Restaurant Name</label>
                 <input
                   type="text"
-                  defaultValue={restaurant.name}
-                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold"
+                  value={settingsName}
+                  onChange={(e) => setSettingsName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
                 />
               </div>
 
@@ -774,16 +1016,18 @@ export default function RestaurantDashboard() {
                   <label className="block font-bold text-slate-700 mb-1">Currency Symbol</label>
                   <input
                     type="text"
-                    defaultValue={restaurant.currencySymbol}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold"
+                    value={settingsCurrency}
+                    onChange={(e) => setSettingsCurrency(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">GST / Tax Rate (%)</label>
                   <input
                     type="number"
-                    defaultValue={restaurant.taxRatePercent}
-                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold"
+                    value={settingsTax}
+                    onChange={(e) => setSettingsTax(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
@@ -792,35 +1036,234 @@ export default function RestaurantDashboard() {
                 <label className="block font-bold text-slate-700 mb-1">UPI ID for Direct Table Payments</label>
                 <input
                   type="text"
-                  defaultValue={restaurant.upiId || ""}
-                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold"
+                  placeholder="e.g. restaurant@icici"
+                  value={settingsUpi}
+                  onChange={(e) => setSettingsUpi(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   Customers who select &ldquo;Pay via UPI&rdquo; will be prompted to scan or pay directly to this VPA.
                 </p>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Address & Contact Phone</label>
-                <input
-                  type="text"
-                  defaultValue={`${restaurant.address} • ${restaurant.phone}`}
-                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={settingsPhone}
+                    onChange={(e) => setSettingsPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={settingsAddress}
+                    onChange={(e) => setSettingsAddress(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
               </div>
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex justify-end">
               <button
-                onClick={() => alert("Settings updated successfully!")}
-                className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition"
+                onClick={handleSaveSettings}
+                disabled={isSavingSettings}
+                className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition active:scale-95 disabled:opacity-50"
               >
-                Save Settings
+                {isSavingSettings ? "Saving to Database..." : "Save Settings to Database"}
               </button>
             </div>
           </div>
         )}
       </main>
+
+      {/* ===================== MODAL: ADD NEW DISH ===================== */}
+      {isAddDishOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-bold text-base text-slate-900">Add New Food Dish</h3>
+              <button
+                onClick={() => setIsAddDishOpen(false)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddDishSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Dish Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tandoori Soya Chaap"
+                  value={newDishName}
+                  onChange={(e) => setNewDishName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Price ({restaurant.currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="250"
+                    value={newDishPrice}
+                    onChange={(e) => setNewDishPrice(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Category</label>
+                  <select
+                    value={newDishCategory}
+                    onChange={(e) => setNewDishCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  >
+                    {restaurant.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Dietary Type</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="dietary"
+                      checked={newDishIsVeg}
+                      onChange={() => setNewDishIsVeg(true)}
+                    />
+                    <span className="font-semibold text-emerald-700">🟢 Veg</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="dietary"
+                      checked={!newDishIsVeg}
+                      onChange={() => setNewDishIsVeg(false)}
+                    />
+                    <span className="font-semibold text-red-700">🔴 Non-Veg</span>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Short Description</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Marinated in spiced yogurt and grilled to perfection."
+                  value={newDishDesc}
+                  onChange={(e) => setNewDishDesc(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Image URL (Optional)</label>
+                <input
+                  type="url"
+                  placeholder="https://images.unsplash.com/..."
+                  value={newDishImage}
+                  onChange={(e) => setNewDishImage(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddDishOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDish}
+                  className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50"
+                >
+                  {isSubmittingDish ? "Adding..." : "Add Dish to Menu"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: ADD NEW TABLE ===================== */}
+      {isAddTableOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-bold text-base text-slate-900">Add New Table</h3>
+              <button
+                onClick={() => setIsAddTableOpen(false)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddTableSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Table Number or Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Table 9, Rooftop 2, Booth 3"
+                  value={newTableNum}
+                  onChange={(e) => setNewTableNum(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Seats Count</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={newTableSeats}
+                  onChange={(e) => setNewTableSeats(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddTableOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingTable}
+                  className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50"
+                >
+                  {isSubmittingTable ? "Creating..." : "Generate Table QR"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

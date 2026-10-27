@@ -1,24 +1,25 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
+import QRCode from "qrcode";
 import { Restaurant, MenuItem, Order, OrderItem } from "@/types";
 import { 
   Search, 
   ShoppingBag, 
   Plus, 
   Minus, 
-  Flame, 
   Clock, 
   BellRing, 
   Droplets, 
   Receipt, 
-  CheckCircle2, 
   X, 
   ChevronRight, 
   UtensilsCrossed,
   Sparkles,
-  ArrowLeft
+  ExternalLink,
+  QrCode as QrIcon,
+  CheckCircle2
 } from "lucide-react";
 
 export default function CustomerTableMenu() {
@@ -37,6 +38,7 @@ export default function CustomerTableMenu() {
 
   // Cart: Map of menuItemId -> { item: MenuItem, quantity: number, notes: string }
   const [cart, setCart] = useState<Record<string, { item: MenuItem; quantity: number; notes: string }>>({});
+  const [cartLoaded, setCartLoaded] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
 
@@ -45,15 +47,19 @@ export default function CustomerTableMenu() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"counter_cash" | "upi_online">("upi_online");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-  const [orderSuccessMessage, setOrderSuccessMessage] = useState<string | null>(null);
+
+  // UPI QR Code State
+  const [upiQrDataUrl, setUpiQrDataUrl] = useState<string | null>(null);
+  const [latestPlacedOrder, setLatestPlacedOrder] = useState<Order | null>(null);
 
   // Table active orders
   const [tableOrders, setTableOrders] = useState<Order[]>([]);
+  const previousStatusMap = useRef<Record<string, string>>({});
 
   // Toast notification for service requests
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Fetch restaurant details
+  // 1. Fetch restaurant details
   useEffect(() => {
     async function fetchRestaurant() {
       try {
@@ -74,25 +80,81 @@ export default function CustomerTableMenu() {
     fetchRestaurant();
   }, [slug]);
 
-  // Current table info
+  // 2. Smarter Current Table Resolution
   const currentTable = useMemo(() => {
     if (!restaurant) return null;
-    return (
-      restaurant.tables.find((t) => t.id === tableParam || t.tableNumber.toLowerCase().replace(/\s+/g, "-") === tableParam.toLowerCase()) || {
-        id: tableParam,
-        tableNumber: tableParam.replace("-", " ").toUpperCase(),
-        seats: 4,
-      }
-    );
+    const cleanParam = tableParam.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Find by exact id, tableNumber, or numeric suffix (e.g. "4" matching "Table 4")
+    const found = restaurant.tables.find((t) => {
+      const cleanTblId = t.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanTblNum = t.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return (
+        t.id === tableParam ||
+        cleanTblId === cleanParam ||
+        cleanTblNum === cleanParam ||
+        cleanTblNum.endsWith(cleanParam) ||
+        cleanParam.endsWith(cleanTblNum)
+      );
+    });
+
+    return found || restaurant.tables[0] || {
+      id: tableParam,
+      tableNumber: `Table ${tableParam.replace(/\D/g, "") || "1"}`,
+      seats: 4,
+    };
   }, [restaurant, tableParam]);
 
-  // Fetch table orders
+  // 3. Cart Persistence: Load from localStorage on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storageKey = `scanbite_cart_${slug}_${tableParam}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        setCart(JSON.parse(saved));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCartLoaded(true);
+    }
+  }, [slug, tableParam]);
+
+  // Save cart to localStorage on change
+  useEffect(() => {
+    if (!cartLoaded || typeof window === "undefined") return;
+    const storageKey = `scanbite_cart_${slug}_${tableParam}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(cart));
+    } catch {
+      // ignore
+    }
+  }, [cart, cartLoaded, slug, tableParam]);
+
+  // 4. Fetch table orders & notify on live status changes
   const fetchOrders = async () => {
     if (!restaurant || !currentTable) return;
     try {
       const res = await fetch(`/api/orders?restaurantId=${restaurant.id}&tableId=${currentTable.id}`);
       if (res.ok) {
-        const data = await res.json();
+        const data: Order[] = await res.json();
+        
+        // Detect status change for alerts
+        data.forEach((ord) => {
+          const prev = previousStatusMap.current[ord.id];
+          if (prev && prev !== ord.status) {
+            if (ord.status === "cooking") {
+              showToast(`👨‍🍳 Chef has started cooking Order #${ord.id.slice(-4)}!`);
+            } else if (ord.status === "ready") {
+              showToast(`🔔 Order #${ord.id.slice(-4)} is ready and being served!`);
+            } else if (ord.status === "served") {
+              showToast(`✅ Order #${ord.id.slice(-4)} served. Enjoy your meal!`);
+            }
+          }
+          previousStatusMap.current[ord.id] = ord.status;
+        });
+
         setTableOrders(data);
       }
     } catch {
@@ -102,7 +164,7 @@ export default function CustomerTableMenu() {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 6000); // Poll every 6s for live status updates
+    const interval = setInterval(fetchOrders, 4000); // 4-second real-time sync
     return () => clearInterval(interval);
   }, [restaurant, currentTable]);
 
@@ -113,6 +175,29 @@ export default function CustomerTableMenu() {
   const taxRate = restaurant?.taxRatePercent || 5;
   const taxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
   const grandTotal = Number((subtotal + taxAmount).toFixed(2));
+
+  // Dynamic UPI Payment Link & QR Generator
+  const upiIntentUri = useMemo(() => {
+    if (!restaurant || grandTotal <= 0) return "";
+    const vpa = restaurant.upiId || "restaurant@upi";
+    const name = encodeURIComponent(restaurant.name);
+    const tableTag = encodeURIComponent(currentTable?.tableNumber || "Table");
+    return `upi://pay?pa=${vpa}&pn=${name}&am=${grandTotal}&cu=INR&tn=Bill%20for%20${tableTag}`;
+  }, [restaurant, grandTotal, currentTable]);
+
+  useEffect(() => {
+    if (!upiIntentUri) {
+      setUpiQrDataUrl(null);
+      return;
+    }
+    QRCode.toDataURL(upiIntentUri, {
+      width: 260,
+      margin: 1,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then((url) => setUpiQrDataUrl(url))
+      .catch(() => setUpiQrDataUrl(null));
+  }, [upiIntentUri]);
 
   // Cart operations
   const addToCart = (item: MenuItem) => {
@@ -219,13 +304,17 @@ export default function CustomerTableMenu() {
       });
 
       if (!res.ok) throw new Error("Order failed");
-      const order = await res.json();
+      const order: Order = await res.json();
 
       setCart({});
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(`scanbite_cart_${slug}_${tableParam}`);
+      }
       setIsCartOpen(false);
-      setOrderSuccessMessage(`Order #${order.id.slice(-4)} sent to the kitchen!`);
+      setLatestPlacedOrder(order);
       fetchOrders();
       setIsOrdersOpen(true);
+      showToast(`🎉 Order #${order.id.slice(-4)} sent to the kitchen!`);
     } catch {
       alert("Failed to submit order. Please try again.");
     } finally {
@@ -272,7 +361,7 @@ export default function CustomerTableMenu() {
     <div className="min-h-screen bg-slate-50 pb-28">
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 text-sm font-medium animate-bounce">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs sm:text-sm font-semibold animate-bounce max-w-[90vw] text-center border border-slate-700">
           <span>{toastMessage}</span>
         </div>
       )}
@@ -289,7 +378,7 @@ export default function CustomerTableMenu() {
                 </span>
               </div>
               <h1 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h1>
-              <p className="text-xs text-slate-500">{restaurant.tagline}</p>
+              <p className="text-xs text-slate-500 line-clamp-1">{restaurant.tagline}</p>
             </div>
 
             {/* Quick Live Orders Tracker Icon */}
@@ -409,7 +498,7 @@ export default function CustomerTableMenu() {
                 {/* Food Image */}
                 <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0">
                   <img
-                    src={item.imageUrl || ""}
+                    src={item.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80"}
                     alt={item.name}
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -625,7 +714,7 @@ export default function CustomerTableMenu() {
 
               {/* Payment Mode Preference */}
               <div className="pt-3">
-                <p className="text-xs font-bold text-slate-700 mb-2">How will you pay?</p>
+                <p className="text-xs font-bold text-slate-700 mb-2">Payment Option:</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -636,7 +725,7 @@ export default function CustomerTableMenu() {
                         : "border-slate-200 text-slate-600"
                     }`}
                   >
-                    📱 UPI / Online
+                    📱 UPI / QR Code
                   </button>
                   <button
                     type="button"
@@ -651,6 +740,25 @@ export default function CustomerTableMenu() {
                   </button>
                 </div>
               </div>
+
+              {/* Dynamic UPI Direct Pay Preview */}
+              {paymentMethod === "upi_online" && (
+                <div className="p-3 bg-orange-50/60 rounded-xl border border-orange-200/80 text-center">
+                  <p className="text-[11px] font-bold text-orange-900 mb-1">
+                    Instant UPI Payment on Submit
+                  </p>
+                  <p className="text-[10px] text-slate-500 mb-2">
+                    Pay directly to <strong>{restaurant.upiId || "restaurant@upi"}</strong>
+                  </p>
+                  <a
+                    href={upiIntentUri}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 bg-white border border-orange-200 px-3 py-1 rounded-lg shadow-sm hover:bg-orange-50"
+                  >
+                    <span>Tap to Pay via GPay / PhonePe</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
 
               {/* Bill Breakdown */}
               <div className="pt-4 space-y-1.5 text-xs text-slate-600">
@@ -778,6 +886,26 @@ export default function CustomerTableMenu() {
                           {order.total}
                         </span>
                       </div>
+
+                      {/* UPI QR Code for this order if unpaid */}
+                      {order.paymentMethod === "upi_online" && order.paymentStatus !== "paid" && (
+                        <div className="mt-3 pt-3 border-t border-slate-200 text-center">
+                          <p className="text-[10px] font-bold text-slate-600 mb-2">Scan & Pay via UPI:</p>
+                          {upiQrDataUrl && (
+                            <img
+                              src={upiQrDataUrl}
+                              alt="UPI QR Code"
+                              className="w-32 h-32 mx-auto rounded-lg border border-slate-200 p-1 bg-white shadow-sm"
+                            />
+                          )}
+                          <a
+                            href={upiIntentUri}
+                            className="inline-block mt-2 text-[11px] font-bold text-orange-600 hover:underline"
+                          >
+                            Open in UPI App →
+                          </a>
+                        </div>
+                      )}
                     </div>
                   );
                 })

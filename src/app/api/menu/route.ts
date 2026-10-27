@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { restaurantId, categoryId, name, description, price, isVeg, imageUrl } = body;
+
+    if (!restaurantId || !categoryId || !name || price === undefined) {
+      return NextResponse.json({ error: "Missing required dish fields" }, { status: 400 });
+    }
+
+    const item = await prisma.menuItem.create({
+      data: {
+        restaurantId,
+        categoryId,
+        name,
+        description: description || "",
+        price: Number(price),
+        isVeg: Boolean(isVeg),
+        isAvailable: true,
+        imageUrl: imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80",
+      },
+    });
+
+    return NextResponse.json(item, { status: 201 });
+  } catch (err) {
+    console.error("Failed to create menu item:", err);
+    return NextResponse.json({ error: "Failed to create menu item" }, { status: 500 });
+  }
+}

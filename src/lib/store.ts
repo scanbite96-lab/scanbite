@@ -49,7 +49,13 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
 export const getTableOrders = async (restaurantId: string, tableId: string): Promise<Order[]> => {
   try {
     const orders = await prisma.order.findMany({
-      where: { restaurantId, tableId },
+      where: {
+        restaurantId,
+        OR: [
+          { tableId },
+          { tableNumber: { contains: tableId } },
+        ],
+      },
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
@@ -75,10 +81,40 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
 
 export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order | null> => {
   try {
+    // Robust table resolution to avoid foreign key errors
+    let validTableId = orderData.tableId;
+    const tableExists = await prisma.table.findUnique({ where: { id: validTableId } });
+    if (!tableExists) {
+      const matchingTable = (await prisma.table.findFirst({
+        where: {
+          restaurantId: orderData.restaurantId,
+          OR: [
+            { tableNumber: { contains: orderData.tableNumber } },
+            { id: { contains: orderData.tableId } },
+          ],
+        },
+      })) || (await prisma.table.findFirst({
+        where: { restaurantId: orderData.restaurantId },
+      }));
+
+      if (matchingTable) {
+        validTableId = matchingTable.id;
+      } else {
+        const createdTbl = await prisma.table.create({
+          data: {
+            restaurantId: orderData.restaurantId,
+            tableNumber: orderData.tableNumber || "Table 1",
+            seats: 4,
+          },
+        });
+        validTableId = createdTbl.id;
+      }
+    }
+
     const order = await prisma.order.create({
       data: {
         restaurantId: orderData.restaurantId,
-        tableId: orderData.tableId,
+        tableId: validTableId,
         tableNumber: orderData.tableNumber,
         customerName: orderData.customerName,
         customerPhone: orderData.customerPhone,
@@ -156,10 +192,19 @@ export const createServiceRequest = async (
   type: ServiceRequest["type"]
 ): Promise<ServiceRequest | null> => {
   try {
+    let validTableId = tableId;
+    const tableExists = await prisma.table.findUnique({ where: { id: validTableId } });
+    if (!tableExists) {
+      const matchingTable = await prisma.table.findFirst({
+        where: { restaurantId },
+      });
+      if (matchingTable) validTableId = matchingTable.id;
+    }
+
     const req = await prisma.serviceRequest.create({
       data: {
         restaurantId,
-        tableId,
+        tableId: validTableId,
         tableNumber,
         type,
         status: "pending",

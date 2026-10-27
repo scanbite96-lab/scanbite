@@ -30,6 +30,15 @@ body {
   background: #94a3b8;
 }
 
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Print styles for QR tent cards */
 @media print {
   body * {
@@ -43,6 +52,10 @@ body {
     left: 0;
     top: 0;
     width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1.5rem !important;
+    padding: 1rem !important;
   }
   .no-print {
     display: none !important;
