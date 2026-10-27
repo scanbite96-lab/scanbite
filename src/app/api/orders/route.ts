@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { restaurantId, tableId, tableNumber, items, subtotal, tax, total, customerName, customerPhone, paymentMethod } = body;
+    const { restaurantId, tableId, tableNumber, items, subtotal, tax, discount, couponCode, total, customerName, customerPhone, paymentMethod } = body;
 
     if (!restaurantId || !tableId || !items || items.length === 0) {
       return NextResponse.json({ error: "Invalid order data" }, { status: 400 });
@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
       items,
       subtotal,
       tax,
+      discount: Number(discount) || 0,
+      couponCode: couponCode || undefined,
       total,
       status: "pending",
       paymentMethod: paymentMethod || "counter_cash",
@@ -56,13 +58,13 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { orderId, status } = body;
+    const { orderId, status, paymentStatus } = body;
 
-    if (!orderId || !status) {
-      return NextResponse.json({ error: "Missing orderId or status" }, { status: 400 });
+    if (!orderId || (!status && !paymentStatus)) {
+      return NextResponse.json({ error: "Missing orderId or status/paymentStatus" }, { status: 400 });
     }
 
-    const updated = await updateOrderStatus(orderId, status);
+    const updated = await updateOrderStatus(orderId, status, paymentStatus);
     if (!updated) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }

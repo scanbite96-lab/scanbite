@@ -29,6 +29,10 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
     return orders.map((o) => ({
       ...o,
       status: o.status as OrderStatus,
+      rating: o.rating ?? undefined,
+      reviewFeedback: o.reviewFeedback ?? undefined,
+      discount: o.discount ?? 0,
+      couponCode: o.couponCode ?? undefined,
       items: o.items.map((it) => ({
         menuItemId: it.menuItemId,
         name: it.name,
@@ -62,6 +66,10 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
     return orders.map((o) => ({
       ...o,
       status: o.status as OrderStatus,
+      rating: o.rating ?? undefined,
+      reviewFeedback: o.reviewFeedback ?? undefined,
+      discount: o.discount ?? 0,
+      couponCode: o.couponCode ?? undefined,
       items: o.items.map((it) => ({
         menuItemId: it.menuItemId,
         name: it.name,
@@ -81,7 +89,6 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
 
 export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order | null> => {
   try {
-    // Robust table resolution to avoid foreign key errors
     let validTableId = orderData.tableId;
     const tableExists = await prisma.table.findUnique({ where: { id: validTableId } });
     if (!tableExists) {
@@ -120,6 +127,8 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
         customerPhone: orderData.customerPhone,
         subtotal: orderData.subtotal,
         tax: orderData.tax,
+        discount: orderData.discount || 0,
+        couponCode: orderData.couponCode || null,
         total: orderData.total,
         status: orderData.status,
         paymentMethod: orderData.paymentMethod || "counter_cash",
@@ -141,6 +150,10 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
     return {
       ...order,
       status: order.status as OrderStatus,
+      rating: order.rating ?? undefined,
+      reviewFeedback: order.reviewFeedback ?? undefined,
+      discount: order.discount ?? 0,
+      couponCode: order.couponCode ?? undefined,
       items: order.items.map((it) => ({
         menuItemId: it.menuItemId,
         name: it.name,
@@ -158,11 +171,19 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
   }
 };
 
-export const updateOrderStatus = async (orderId: string, status: Order["status"]): Promise<Order | null> => {
+export const updateOrderStatus = async (
+  orderId: string,
+  status?: Order["status"],
+  paymentStatus?: Order["paymentStatus"]
+): Promise<Order | null> => {
   try {
+    const updateData: Record<string, string> = {};
+    if (status) updateData.status = status;
+    if (paymentStatus) updateData.paymentStatus = paymentStatus;
+
     const updated = await prisma.order.update({
       where: { id: orderId },
-      data: { status },
+      data: updateData,
       include: { items: true },
     });
     return {
@@ -182,6 +203,22 @@ export const updateOrderStatus = async (orderId: string, status: Order["status"]
   } catch (err) {
     console.error("Prisma updateOrderStatus error:", err);
     return null;
+  }
+};
+
+export const updateOrderRating = async (orderId: string, rating: number, reviewFeedback?: string): Promise<boolean> => {
+  try {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        rating,
+        reviewFeedback,
+      },
+    });
+    return true;
+  } catch (err) {
+    console.error("Prisma updateOrderRating error:", err);
+    return false;
   }
 };
 

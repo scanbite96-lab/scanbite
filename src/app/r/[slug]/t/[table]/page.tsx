@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
 import QRCode from "qrcode";
 import { Restaurant, MenuItem, Order, OrderItem } from "@/types";
+import { translations, Language } from "@/lib/translations";
 import { 
   Search, 
   ShoppingBag, 
@@ -18,14 +19,20 @@ import {
   UtensilsCrossed,
   Sparkles,
   ExternalLink,
-  QrCode as QrIcon,
-  CheckCircle2
+  Star,
+  Tag,
+  CheckCircle2,
+  Languages
 } from "lucide-react";
 
 export default function CustomerTableMenu() {
   const params = useParams();
   const slug = params.slug as string;
   const tableParam = params.table as string;
+
+  // Language state: English by default
+  const [lang, setLang] = useState<Language>("en");
+  const t = translations[lang];
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +49,11 @@ export default function CustomerTableMenu() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
 
+  // Promo Code State
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; percentOff?: number; flatOff?: number } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
   // Customer form details
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -50,10 +62,11 @@ export default function CustomerTableMenu() {
 
   // UPI QR Code State
   const [upiQrDataUrl, setUpiQrDataUrl] = useState<string | null>(null);
-  const [latestPlacedOrder, setLatestPlacedOrder] = useState<Order | null>(null);
 
-  // Table active orders
+  // Table active orders & Rating state
   const [tableOrders, setTableOrders] = useState<Order[]>([]);
+  const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
+  const [submittedRatingMap, setSubmittedRatingMap] = useState<Record<string, boolean>>({});
   const previousStatusMap = useRef<Record<string, string>>({});
 
   // Toast notification for service requests
@@ -85,12 +98,11 @@ export default function CustomerTableMenu() {
     if (!restaurant) return null;
     const cleanParam = tableParam.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    // Find by exact id, tableNumber, or numeric suffix (e.g. "4" matching "Table 4")
-    const found = restaurant.tables.find((t) => {
-      const cleanTblId = t.id.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const cleanTblNum = t.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const found = restaurant.tables.find((tbl) => {
+      const cleanTblId = tbl.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanTblNum = tbl.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
       return (
-        t.id === tableParam ||
+        tbl.id === tableParam ||
         cleanTblId === cleanParam ||
         cleanTblNum === cleanParam ||
         cleanTblNum.endsWith(cleanParam) ||
@@ -140,14 +152,13 @@ export default function CustomerTableMenu() {
       if (res.ok) {
         const data: Order[] = await res.json();
         
-        // Detect status change for alerts
         data.forEach((ord) => {
           const prev = previousStatusMap.current[ord.id];
           if (prev && prev !== ord.status) {
             if (ord.status === "cooking") {
               showToast(`👨‍🍳 Chef has started cooking Order #${ord.id.slice(-4)}!`);
             } else if (ord.status === "ready") {
-              showToast(`🔔 Order #${ord.id.slice(-4)} is ready and being served!`);
+              showToast(`🔔 Order #${ord.id.slice(-4)} is ready to serve!`);
             } else if (ord.status === "served") {
               showToast(`✅ Order #${ord.id.slice(-4)} served. Enjoy your meal!`);
             }
@@ -172,9 +183,21 @@ export default function CustomerTableMenu() {
   const cartItems = Object.values(cart);
   const cartCount = cartItems.reduce((acc, c) => acc + c.quantity, 0);
   const subtotal = cartItems.reduce((acc, c) => acc + c.item.price * c.quantity, 0);
+  
+  // Discount calculation
+  let discountAmount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.percentOff) {
+      discountAmount = Math.round((subtotal * appliedCoupon.percentOff) / 100);
+    } else if (appliedCoupon.flatOff) {
+      discountAmount = Math.min(subtotal, appliedCoupon.flatOff);
+    }
+  }
+
+  const taxableAmount = Math.max(0, subtotal - discountAmount);
   const taxRate = restaurant?.taxRatePercent || 5;
-  const taxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
-  const grandTotal = Number((subtotal + taxAmount).toFixed(2));
+  const taxAmount = Number(((taxableAmount * taxRate) / 100).toFixed(2));
+  const grandTotal = Number((taxableAmount + taxAmount).toFixed(2));
 
   // Dynamic UPI Payment Link & QR Generator
   const upiIntentUri = useMemo(() => {
@@ -242,13 +265,34 @@ export default function CustomerTableMenu() {
     });
   };
 
+  // Promo Code Validation
+  const handleApplyCoupon = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCouponError(null);
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+
+    if (code === "WELCOME10") {
+      setAppliedCoupon({ code: "WELCOME10", percentOff: 10 });
+      showToast("🎉 WELCOME10 applied! 10% discount added.");
+    } else if (code === "FLAT50") {
+      setAppliedCoupon({ code: "FLAT50", flatOff: 50 });
+      showToast("🎉 FLAT50 applied! ₹50 discount added.");
+    } else if (code === "TASTE20") {
+      setAppliedCoupon({ code: "TASTE20", percentOff: 20 });
+      showToast("🎉 TASTE20 applied! 20% discount added.");
+    } else {
+      setCouponError("Invalid promo code. Try WELCOME10 or FLAT50");
+    }
+  };
+
   // Service Request helper (Water, Waiter, Bill)
   const triggerServiceRequest = async (type: "water" | "waiter" | "bill") => {
     if (!restaurant || !currentTable) return;
     const labels = {
-      water: "💧 Drinking water requested!",
-      waiter: "🛎️ Waiter called to your table!",
-      bill: "🧾 Bill request sent to counter!",
+      water: lang === "hi" ? "💧 पीने का पानी मंगवाया गया!" : "💧 Drinking water requested!",
+      waiter: lang === "hi" ? "🛎️ वेटर को टेबल पर बुलाया गया!" : "🛎️ Waiter called to your table!",
+      bill: lang === "hi" ? "🧾 बिल का अनुरोध काउंटर पर भेजा गया!" : "🧾 Bill request sent to counter!",
     };
     try {
       await fetch("/api/service-requests", {
@@ -298,6 +342,8 @@ export default function CustomerTableMenu() {
           items: orderPayloadItems,
           subtotal,
           tax: taxAmount,
+          discount: discountAmount,
+          couponCode: appliedCoupon?.code,
           total: grandTotal,
           paymentMethod,
         }),
@@ -311,7 +357,6 @@ export default function CustomerTableMenu() {
         localStorage.removeItem(`scanbite_cart_${slug}_${tableParam}`);
       }
       setIsCartOpen(false);
-      setLatestPlacedOrder(order);
       fetchOrders();
       setIsOrdersOpen(true);
       showToast(`🎉 Order #${order.id.slice(-4)} sent to the kitchen!`);
@@ -321,6 +366,30 @@ export default function CustomerTableMenu() {
       setIsPlacingOrder(false);
     }
   };
+
+  // Submit Star Rating
+  const handleRatingSubmit = async (orderId: string, rating: number) => {
+    setRatingsMap((prev) => ({ ...prev, [orderId]: rating }));
+    try {
+      await fetch("/api/orders/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, rating }),
+      });
+      setSubmittedRatingMap((prev) => ({ ...prev, [orderId]: true }));
+      showToast(rating >= 4 ? "⭐ Thank you! We'd love your Google review!" : "🙏 Thank you for your feedback!");
+    } catch {
+      // ignore
+    }
+  };
+
+  // Recommended Add-ons (Dishes not in cart, e.g. Desserts & Drinks)
+  const recommendedAddons = useMemo(() => {
+    if (!restaurant) return [];
+    return restaurant.menuItems
+      .filter((it) => !cart[it.id] && it.isAvailable && (it.isBestseller || it.categoryId === "cat-4" || it.categoryId === "cat-5"))
+      .slice(0, 4);
+  }, [restaurant, cart]);
 
   // Filtered Menu Items
   const filteredItems = useMemo(() => {
@@ -381,19 +450,30 @@ export default function CustomerTableMenu() {
               <p className="text-xs text-slate-500 line-clamp-1">{restaurant.tagline}</p>
             </div>
 
-            {/* Quick Live Orders Tracker Icon */}
-            <button
-              onClick={() => setIsOrdersOpen(true)}
-              className="relative p-2.5 rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
-              title="View Table Orders"
-            >
-              <Clock className="w-5 h-5" />
-              {tableOrders.length > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {tableOrders.length}
-                </span>
-              )}
-            </button>
+            {/* Language Switcher & Orders Tracker Icon */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLang(lang === "en" ? "hi" : "en")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
+                title="Switch Language"
+              >
+                <Languages className="w-3.5 h-3.5 text-orange-600" />
+                <span>{lang === "en" ? "हिंदी" : "EN"}</span>
+              </button>
+
+              <button
+                onClick={() => setIsOrdersOpen(true)}
+                className="relative p-2.5 rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 transition"
+                title="View Table Orders"
+              >
+                <Clock className="w-5 h-5" />
+                {tableOrders.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {tableOrders.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Quick Waiter Action Buttons */}
@@ -402,19 +482,19 @@ export default function CustomerTableMenu() {
               onClick={() => triggerServiceRequest("water")}
               className="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-sky-50 text-sky-700 hover:bg-sky-100 rounded-lg text-xs font-semibold transition"
             >
-              <Droplets className="w-3.5 h-3.5" /> Water
+              <Droplets className="w-3.5 h-3.5" /> {t.water}
             </button>
             <button
               onClick={() => triggerServiceRequest("waiter")}
               className="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg text-xs font-semibold transition"
             >
-              <BellRing className="w-3.5 h-3.5" /> Call Waiter
+              <BellRing className="w-3.5 h-3.5" /> {t.callWaiter}
             </button>
             <button
               onClick={() => triggerServiceRequest("bill")}
               className="flex items-center justify-center gap-1.5 py-1.5 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-xs font-semibold transition"
             >
-              <Receipt className="w-3.5 h-3.5" /> Get Bill
+              <Receipt className="w-3.5 h-3.5" /> {t.getBill}
             </button>
           </div>
 
@@ -424,7 +504,7 @@ export default function CustomerTableMenu() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search dishes (e.g. Biryani, Paneer)..."
+                placeholder={t.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-100 text-slate-800 placeholder-slate-400 pl-9 pr-3 py-2 text-xs rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition"
@@ -442,7 +522,7 @@ export default function CustomerTableMenu() {
               <span className="w-2.5 h-2.5 border-2 border-emerald-500 rounded-sm flex items-center justify-center bg-white">
                 <span className="w-1 h-1 rounded-full bg-emerald-600" />
               </span>
-              Veg Only
+              {t.vegOnly}
             </button>
           </div>
         </div>
@@ -457,7 +537,7 @@ export default function CustomerTableMenu() {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            🔥 All Items
+            {t.allItems}
           </button>
           {restaurant.categories.map((cat) => (
             <button
@@ -506,13 +586,13 @@ export default function CustomerTableMenu() {
                   {!item.isAvailable && (
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">
                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">
-                        Sold Out
+                        {t.soldOut}
                       </span>
                     </div>
                   )}
                   {item.isBestseller && item.isAvailable && (
                     <div className="absolute top-1.5 left-1.5 bg-orange-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
-                      ★ Bestseller
+                      {t.bestseller}
                     </div>
                   )}
                 </div>
@@ -563,7 +643,7 @@ export default function CustomerTableMenu() {
                           onClick={() => addToCart(item)}
                           className="bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition active:scale-95"
                         >
-                          <Plus className="w-3.5 h-3.5" /> ADD
+                          <Plus className="w-3.5 h-3.5" /> {t.add}
                         </button>
                       ) : (
                         <div className="flex items-center bg-orange-600 text-white rounded-lg shadow-sm font-bold text-xs">
@@ -583,7 +663,7 @@ export default function CustomerTableMenu() {
                         </div>
                       )
                     ) : (
-                      <span className="text-xs font-semibold text-slate-400">Unavailable</span>
+                      <span className="text-xs font-semibold text-slate-400">{t.soldOut}</span>
                     )}
                   </div>
                 </div>
@@ -599,12 +679,12 @@ export default function CustomerTableMenu() {
           <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-2xl flex items-center justify-between border border-slate-800">
             <div>
               <div className="text-xs text-slate-400">
-                {cartCount} {cartCount === 1 ? "item" : "items"} added
+                {cartCount} {cartCount === 1 ? t.itemAdded : t.itemsAdded}
               </div>
               <div className="text-base font-extrabold text-white">
                 {restaurant.currencySymbol}
                 {grandTotal}{" "}
-                <span className="text-[10px] text-slate-400 font-normal">incl. tax</span>
+                <span className="text-[10px] text-slate-400 font-normal">{t.inclTax}</span>
               </div>
             </div>
 
@@ -612,7 +692,7 @@ export default function CustomerTableMenu() {
               onClick={() => setIsCartOpen(true)}
               className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-orange-500/20 active:scale-95 transition"
             >
-              <ShoppingBag className="w-4 h-4" /> View Cart & Order
+              <ShoppingBag className="w-4 h-4" /> {t.viewCart}
             </button>
           </div>
         </div>
@@ -625,7 +705,7 @@ export default function CustomerTableMenu() {
             {/* Modal Header */}
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="font-bold text-slate-900 text-base">Your Order Summary</h2>
+                <h2 className="font-bold text-slate-900 text-base">{t.yourOrderSummary}</h2>
                 <p className="text-xs text-orange-600 font-semibold">{currentTable?.tableNumber}</p>
               </div>
               <button
@@ -683,7 +763,7 @@ export default function CustomerTableMenu() {
                   {/* Special notes per item */}
                   <input
                     type="text"
-                    placeholder="Add cooking note (e.g. less spicy)..."
+                    placeholder={t.cookingNotePlaceholder}
                     value={notes}
                     onChange={(e) => updateItemNotes(item.id, e.target.value)}
                     className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
@@ -691,20 +771,88 @@ export default function CustomerTableMenu() {
                 </div>
               ))}
 
+              {/* Recommended Add-ons (Cross-selling) */}
+              {recommendedAddons.length > 0 && (
+                <div className="pt-4">
+                  <p className="text-xs font-bold text-slate-800 mb-2.5 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-500" />
+                    <span>{t.frequentlyOrderedTogether}</span>
+                  </p>
+                  <div className="flex gap-2.5 overflow-x-auto no-scrollbar pb-1">
+                    {recommendedAddons.map((addon) => (
+                      <div
+                        key={addon.id}
+                        className="bg-slate-50 border border-slate-200/80 rounded-xl p-2 flex-shrink-0 w-36 flex flex-col justify-between"
+                      >
+                        <div className="w-full h-16 rounded-lg overflow-hidden mb-1.5 bg-slate-200">
+                          <img
+                            src={addon.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80"}
+                            alt={addon.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-800 line-clamp-1">{addon.name}</div>
+                        <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200">
+                          <span className="text-[10px] font-extrabold text-slate-900">
+                            {restaurant.currencySymbol}
+                            {addon.price}
+                          </span>
+                          <button
+                            onClick={() => addToCart(addon)}
+                            className="text-[10px] font-bold bg-orange-600 text-white px-2 py-0.5 rounded hover:bg-orange-700 active:scale-95"
+                          >
+                            + ADD
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Promo Code Section */}
+              <div className="pt-3">
+                <form onSubmit={handleApplyCoupon} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder={t.couponPlaceholder}
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value)}
+                      className="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg uppercase font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-lg transition"
+                  >
+                    {t.apply}
+                  </button>
+                </form>
+                {appliedCoupon && (
+                  <p className="text-[10px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Coupon <strong>{appliedCoupon.code}</strong> applied (-{restaurant.currencySymbol}{discountAmount})</span>
+                  </p>
+                )}
+                {couponError && <p className="text-[10px] text-red-500 font-medium mt-1">{couponError}</p>}
+              </div>
+
               {/* Customer Details */}
               <div className="pt-4 space-y-2">
-                <p className="text-xs font-bold text-slate-700">Diner Details (Optional):</p>
+                <p className="text-xs font-bold text-slate-700">{t.dinerDetails}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
-                    placeholder="Your Name"
+                    placeholder={t.yourName}
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
                     className="bg-slate-50 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
                   <input
                     type="tel"
-                    placeholder="Phone (for bill)"
+                    placeholder={t.phoneForBill}
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
                     className="bg-slate-50 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -714,7 +862,7 @@ export default function CustomerTableMenu() {
 
               {/* Payment Mode Preference */}
               <div className="pt-3">
-                <p className="text-xs font-bold text-slate-700 mb-2">Payment Option:</p>
+                <p className="text-xs font-bold text-slate-700 mb-2">{t.paymentOption}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -725,7 +873,7 @@ export default function CustomerTableMenu() {
                         : "border-slate-200 text-slate-600"
                     }`}
                   >
-                    📱 UPI / QR Code
+                    {t.upiQr}
                   </button>
                   <button
                     type="button"
@@ -736,7 +884,7 @@ export default function CustomerTableMenu() {
                         : "border-slate-200 text-slate-600"
                     }`}
                   >
-                    💵 Cash at Counter
+                    {t.cashCounter}
                   </button>
                 </div>
               </div>
@@ -745,16 +893,16 @@ export default function CustomerTableMenu() {
               {paymentMethod === "upi_online" && (
                 <div className="p-3 bg-orange-50/60 rounded-xl border border-orange-200/80 text-center">
                   <p className="text-[11px] font-bold text-orange-900 mb-1">
-                    Instant UPI Payment on Submit
+                    {t.instantUpi}
                   </p>
                   <p className="text-[10px] text-slate-500 mb-2">
-                    Pay directly to <strong>{restaurant.upiId || "restaurant@upi"}</strong>
+                    {t.payDirectlyTo} <strong>{restaurant.upiId || "restaurant@upi"}</strong>
                   </p>
                   <a
                     href={upiIntentUri}
                     className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 bg-white border border-orange-200 px-3 py-1 rounded-lg shadow-sm hover:bg-orange-50"
                   >
-                    <span>Tap to Pay via GPay / PhonePe</span>
+                    <span>{t.tapToPay}</span>
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
@@ -763,21 +911,30 @@ export default function CustomerTableMenu() {
               {/* Bill Breakdown */}
               <div className="pt-4 space-y-1.5 text-xs text-slate-600">
                 <div className="flex justify-between">
-                  <span>Subtotal</span>
+                  <span>{t.subtotal}</span>
                   <span>
                     {restaurant.currencySymbol}
                     {subtotal}
                   </span>
                 </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-semibold">
+                    <span>{t.discount} ({appliedCoupon?.code})</span>
+                    <span>
+                      -{restaurant.currencySymbol}
+                      {discountAmount}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
-                  <span>Taxes (GST {taxRate}%)</span>
+                  <span>{t.tax} {taxRate}%)</span>
                   <span>
                     {restaurant.currencySymbol}
                     {taxAmount}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm font-extrabold text-slate-900 pt-2 border-t border-slate-200">
-                  <span>Grand Total</span>
+                  <span>{t.grandTotal}</span>
                   <span className="text-orange-600">
                     {restaurant.currencySymbol}
                     {grandTotal}
@@ -794,10 +951,10 @@ export default function CustomerTableMenu() {
                 className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-600/25 active:scale-98 transition disabled:opacity-50"
               >
                 {isPlacingOrder ? (
-                  <span>Sending to Kitchen...</span>
+                  <span>{t.sendingToKitchen}</span>
                 ) : (
                   <>
-                    <span>Confirm & Send Order to Kitchen</span>
+                    <span>{t.confirmSend}</span>
                     <ChevronRight className="w-4 h-4" />
                   </>
                 )}
@@ -813,8 +970,8 @@ export default function CustomerTableMenu() {
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h2 className="font-bold text-slate-900 text-base">Live Orders for {currentTable?.tableNumber}</h2>
-                <p className="text-xs text-slate-500">Real-time status from the kitchen</p>
+                <h2 className="font-bold text-slate-900 text-base">{t.liveOrdersFor} {currentTable?.tableNumber}</h2>
+                <p className="text-xs text-slate-500">{t.realTimeStatus}</p>
               </div>
               <button
                 onClick={() => setIsOrdersOpen(false)}
@@ -843,13 +1000,16 @@ export default function CustomerTableMenu() {
                   };
 
                   const statusLabels = {
-                    pending: "⏳ Order Received (Waiting for Chef)",
-                    cooking: "👨‍🍳 Cooking in Kitchen",
-                    ready: "🔔 Ready to Serve!",
-                    served: "✅ Served at Table",
-                    completed: "🎉 Paid & Completed",
-                    cancelled: "❌ Cancelled",
+                    pending: lang === "hi" ? "⏳ ऑर्डर प्राप्त हुआ (शेफ का इंतज़ार)" : "⏳ Order Received (Waiting for Chef)",
+                    cooking: lang === "hi" ? "👨‍🍳 रसोई में तैयार हो रहा है" : "👨‍🍳 Cooking in Kitchen",
+                    ready: lang === "hi" ? "🔔 परोसने के लिए तैयार!" : "🔔 Ready to Serve!",
+                    served: lang === "hi" ? "✅ टेबल पर परोस दिया गया" : "✅ Served at Table",
+                    completed: lang === "hi" ? "🎉 भुगतान पूरा हुआ" : "🎉 Paid & Completed",
+                    cancelled: lang === "hi" ? "❌ रद्द किया गया" : "❌ Cancelled",
                   };
+
+                  const currentRating = ratingsMap[order.id] || order.rating || 0;
+                  const hasSubmittedRating = submittedRatingMap[order.id] || Boolean(order.rating);
 
                   return (
                     <div key={order.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
@@ -880,7 +1040,7 @@ export default function CustomerTableMenu() {
                       </div>
 
                       <div className="pt-2 border-t border-slate-200/80 flex justify-between items-center text-xs font-bold">
-                        <span className="text-slate-600">Total Bill</span>
+                        <span className="text-slate-600">{t.grandTotal}</span>
                         <span className="text-slate-900 text-sm">
                           {restaurant.currencySymbol}
                           {order.total}
@@ -904,6 +1064,51 @@ export default function CustomerTableMenu() {
                           >
                             Open in UPI App →
                           </a>
+                        </div>
+                      )}
+
+                      {/* Interactive Meal Rating & Google Review Boost */}
+                      {(order.status === "served" || order.status === "completed") && (
+                        <div className="mt-3 pt-3 border-t border-slate-200/90 text-center">
+                          <p className="text-[11px] font-bold text-slate-800 mb-1">{t.rateYourMeal}</p>
+                          <div className="flex items-center justify-center gap-1 my-1.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                onClick={() => handleRatingSubmit(order.id, star)}
+                                className="p-1 hover:scale-125 transition"
+                              >
+                                <Star
+                                  className={`w-5 h-5 ${
+                                    star <= currentRating
+                                      ? "text-amber-400 fill-amber-400"
+                                      : "text-slate-300"
+                                  }`}
+                                />
+                              </button>
+                            ))}
+                          </div>
+
+                          {currentRating >= 4 && (
+                            <div className="mt-2 p-2 bg-amber-50 rounded-xl border border-amber-200 animate-in fade-in">
+                              <p className="text-[10px] font-bold text-amber-900 mb-1">
+                                Loved your experience? Support us with 5-Stars!
+                              </p>
+                              <a
+                                href={`https://www.google.com/search?q=${encodeURIComponent(restaurant.name + " " + restaurant.address)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-amber-600 hover:bg-amber-700 px-3 py-1 rounded-lg shadow-sm"
+                              >
+                                <span>{t.shareOnGoogle}</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
+                          )}
+
+                          {hasSubmittedRating && currentRating < 4 && currentRating > 0 && (
+                            <p className="text-[10px] text-slate-500 mt-1">{t.thankYouFeedback}</p>
+                          )}
                         </div>
                       )}
                     </div>

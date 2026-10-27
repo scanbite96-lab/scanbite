@@ -28,11 +28,19 @@ import {
   ChevronRight,
   X,
   Store,
-  Check
+  Check,
+  TrendingUp,
+  BarChart3,
+  DollarSign,
+  Star,
+  Users,
+  FileText,
+  Sparkles,
+  Trash2
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
-  const [activeTab, setActiveTab] = useState<"kds" | "menu" | "tables" | "settings">("kds");
+  const [activeTab, setActiveTab] = useState<"kds" | "analytics" | "menu" | "tables" | "settings">("kds");
   const [restaurantSlug, setRestaurantSlug] = useState("grand-spice");
   const [availableRestaurants, setAvailableRestaurants] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -52,6 +60,9 @@ export default function RestaurantDashboard() {
 
   // Menu Search
   const [menuSearch, setMenuSearch] = useState("");
+
+  // KOT Slip Modal
+  const [selectedKotOrder, setSelectedKotOrder] = useState<Order | null>(null);
 
   // Add Table Modal State
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
@@ -113,7 +124,7 @@ export default function RestaurantDashboard() {
       playTone(880.00, now + 0.15, 0.4); // A5
       playTone(1174.66, now + 0.3, 0.6); // D6
     } catch {
-      // AudioContext blocked or not supported
+      // AudioContext blocked
     }
   };
 
@@ -141,7 +152,6 @@ export default function RestaurantDashboard() {
         const restData: Restaurant = await restRes.json();
         setRestaurant(restData);
 
-        // Populate settings fields once
         if (!settingsName) {
           setSettingsName(restData.name);
           setSettingsCurrency(restData.currencySymbol || "₹");
@@ -156,7 +166,6 @@ export default function RestaurantDashboard() {
         if (ordRes.ok) {
           const ordData: Order[] = await ordRes.json();
           
-          // Trigger Chime if new orders arrived
           if (prevOrdersCountRef.current > 0 && ordData.length > prevOrdersCountRef.current) {
             playNewOrderChime();
           }
@@ -180,7 +189,7 @@ export default function RestaurantDashboard() {
 
   useEffect(() => {
     loadDashboardData();
-    const interval = setInterval(loadDashboardData, 4000); // 4-second kitchen polling
+    const interval = setInterval(loadDashboardData, 4000); // 4-second polling
     return () => clearInterval(interval);
   }, [restaurantSlug]);
 
@@ -197,10 +206,7 @@ export default function RestaurantDashboard() {
           const qrDataUrl = await QRCode.toDataURL(tableUrl, {
             width: 320,
             margin: 2,
-            color: {
-              dark: "#0f172a",
-              light: "#ffffff",
-            },
+            color: { dark: "#0f172a", light: "#ffffff" },
           });
           qrs[tbl.id] = qrDataUrl;
         } catch (err) {
@@ -381,6 +387,42 @@ export default function RestaurantDashboard() {
     });
   }, [orders, kdsFilter]);
 
+  // Analytics Calculations
+  const analyticsData = useMemo(() => {
+    const validOrders = orders.filter((o) => o.status !== "cancelled");
+    const totalRevenue = validOrders.reduce((acc, o) => acc + o.total, 0);
+    const avgOrderValue = validOrders.length > 0 ? Math.round(totalRevenue / validOrders.length) : 0;
+    
+    // Top dish counter
+    const dishCounts: Record<string, { name: string; count: number; revenue: number; isVeg: boolean }> = {};
+    validOrders.forEach((ord) => {
+      ord.items.forEach((it) => {
+        if (!dishCounts[it.name]) {
+          dishCounts[it.name] = { name: it.name, count: 0, revenue: 0, isVeg: it.isVeg };
+        }
+        dishCounts[it.name].count += it.quantity;
+        dishCounts[it.name].revenue += it.price * it.quantity;
+      });
+    });
+
+    const topDishes = Object.values(dishCounts).sort((a, b) => b.count - a.count).slice(0, 5);
+
+    // Ratings
+    const ratedOrders = orders.filter((o) => o.rating && o.rating > 0);
+    const avgRating = ratedOrders.length > 0
+      ? (ratedOrders.reduce((acc, o) => acc + (o.rating || 0), 0) / ratedOrders.length).toFixed(1)
+      : "5.0";
+
+    return {
+      totalRevenue,
+      totalOrders: validOrders.length,
+      avgOrderValue,
+      topDishes,
+      avgRating,
+      ratingCount: ratedOrders.length,
+    };
+  }, [orders]);
+
   // Active Pending Service Requests
   const pendingRequests = serviceRequests.filter((r) => r.status === "pending");
 
@@ -420,7 +462,6 @@ export default function RestaurantDashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                {/* Multi-Restaurant Switcher */}
                 {availableRestaurants.length > 1 ? (
                   <select
                     value={restaurantSlug}
@@ -449,14 +490,14 @@ export default function RestaurantDashboard() {
           <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
             <button
               onClick={() => setActiveTab("kds")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "kds"
                   ? "bg-orange-500 text-white shadow"
                   : "text-slate-300 hover:text-white hover:bg-slate-700/50"
               }`}
             >
               <ChefHat className="w-4 h-4" />
-              <span>Kitchen Display</span>
+              <span>Kitchen</span>
               {filteredOrders.length > 0 && (
                 <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
                   {filteredOrders.length}
@@ -465,32 +506,44 @@ export default function RestaurantDashboard() {
             </button>
 
             <button
+              onClick={() => setActiveTab("analytics")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                activeTab === "analytics"
+                  ? "bg-orange-500 text-white shadow"
+                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>Analytics</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("menu")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "menu"
                   ? "bg-orange-500 text-white shadow"
                   : "text-slate-300 hover:text-white hover:bg-slate-700/50"
               }`}
             >
               <MenuIcon className="w-4 h-4" />
-              <span>Menu & Stock</span>
+              <span>Menu</span>
             </button>
 
             <button
               onClick={() => setActiveTab("tables")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "tables"
                   ? "bg-orange-500 text-white shadow"
                   : "text-slate-300 hover:text-white hover:bg-slate-700/50"
               }`}
             >
               <QrCode className="w-4 h-4" />
-              <span>Table QRs</span>
+              <span>QRs</span>
             </button>
 
             <button
               onClick={() => setActiveTab("settings")}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 activeTab === "settings"
                   ? "bg-orange-500 text-white shadow"
                   : "text-slate-300 hover:text-white hover:bg-slate-700/50"
@@ -710,9 +763,18 @@ export default function RestaurantDashboard() {
                             </div>
                           </div>
 
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${config.badge}`}>
-                            {config.label}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedKotOrder(order)}
+                              className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
+                              title="Print Thermal KOT Slip"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${config.badge}`}>
+                              {config.label}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Customer / Payment detail */}
@@ -784,7 +846,86 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 2: MENU & STOCK MANAGEMENT ===================== */}
+        {/* ===================== TAB 2: BUSINESS ANALYTICS ===================== */}
+        {activeTab === "analytics" && (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">Total Sales</span>
+                  <DollarSign className="w-5 h-5 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">
+                  {restaurant.currencySymbol}
+                  {analyticsData.totalRevenue}
+                </div>
+                <p className="text-[11px] text-emerald-600 font-medium mt-1">Across all tables</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">Total Orders</span>
+                  <FileText className="w-5 h-5 text-orange-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">{analyticsData.totalOrders}</div>
+                <p className="text-[11px] text-slate-400 font-medium mt-1">Orders processed</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">Avg Order Value</span>
+                  <TrendingUp className="w-5 h-5 text-sky-500" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">
+                  {restaurant.currencySymbol}
+                  {analyticsData.avgOrderValue}
+                </div>
+                <p className="text-[11px] text-sky-600 font-medium mt-1">Per dining table</p>
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">Guest Rating</span>
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">
+                  {analyticsData.avgRating} <span className="text-sm font-semibold text-slate-400">/ 5.0</span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium mt-1">{analyticsData.ratingCount} guest reviews</p>
+              </div>
+            </div>
+
+            {/* Leaderboard: Top Selling Dishes */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-base text-slate-900 mb-4 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-orange-500" />
+                <span>Top Selling Dishes Leaderboard</span>
+              </h3>
+
+              <div className="space-y-3">
+                {analyticsData.topDishes.map((dish, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-slate-200 font-black text-xs text-slate-700 flex items-center justify-center">
+                        #{idx + 1}
+                      </span>
+                      <span className={`w-2.5 h-2.5 rounded-full ${dish.isVeg ? "bg-emerald-500" : "bg-red-500"}`} />
+                      <span className="font-bold text-slate-800 text-xs sm:text-sm">{dish.name}</span>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-extrabold text-xs text-slate-900">{dish.count} ordered</div>
+                      <div className="text-[10px] text-slate-400">{restaurant.currencySymbol}{dish.revenue} earned</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 3: MENU & STOCK MANAGEMENT ===================== */}
         {activeTab === "menu" && (
           <div className="space-y-6">
             {/* Header / Filter */}
@@ -889,7 +1030,7 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 3: TABLE & QR CODE GENERATOR ===================== */}
+        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR ===================== */}
         {activeTab === "tables" && (
           <div className="space-y-6">
             {/* Action Bar */}
@@ -985,7 +1126,7 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 4: SETTINGS ===================== */}
+        {/* ===================== TAB 5: SETTINGS ===================== */}
         {activeTab === "settings" && (
           <div className="max-w-2xl bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
             <div>
@@ -1081,6 +1222,72 @@ export default function RestaurantDashboard() {
           </div>
         )}
       </main>
+
+      {/* ===================== MODAL: KOT THERMAL SLIP PREVIEW & PRINT ===================== */}
+      {selectedKotOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-orange-500" />
+                <span>Thermal KOT Slip Preview</span>
+              </h3>
+              <button
+                onClick={() => setSelectedKotOrder(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 80mm Receipt Look */}
+            <div className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl font-mono text-xs text-slate-800 space-y-2">
+              <div className="text-center pb-2 border-b border-dashed border-slate-300">
+                <div className="font-extrabold uppercase">{restaurant.name}</div>
+                <div className="text-[10px] text-slate-500">*** KITCHEN ORDER TICKET (KOT) ***</div>
+                <div className="text-[10px] mt-1">Date: {new Date(selectedKotOrder.createdAt).toLocaleDateString()} {new Date(selectedKotOrder.createdAt).toLocaleTimeString()}</div>
+              </div>
+
+              <div className="flex justify-between font-bold text-sm py-1 border-b border-dashed border-slate-300">
+                <span>{selectedKotOrder.tableNumber}</span>
+                <span>#{selectedKotOrder.id.slice(-4)}</span>
+              </div>
+
+              <div className="space-y-1.5 py-1">
+                {selectedKotOrder.items.map((it, idx) => (
+                  <div key={idx} className="flex justify-between text-xs">
+                    <div>
+                      <span className="font-extrabold">{it.quantity}x</span> {it.name}
+                      {it.notes && <div className="text-[10px] font-sans text-amber-700">** {it.notes} **</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-2 border-t border-dashed border-slate-300 flex justify-between font-bold">
+                <span>Total Amount</span>
+                <span>{restaurant.currencySymbol}{selectedKotOrder.total}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setSelectedKotOrder(null)}
+                className="flex-1 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow flex items-center justify-center gap-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print KOT Slip</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===================== MODAL: ADD NEW DISH ===================== */}
       {isAddDishOpen && (

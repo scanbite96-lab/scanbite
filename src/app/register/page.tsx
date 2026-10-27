@@ -234,7 +234,7 @@ export default function RegisterRestaurantPage() {
               </Link>
 
               <Link
-                href="/dashboard"
+                href={`/dashboard?slug=${createdSlug}`}
                 className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
               >
                 <ChefHat className="w-4 h-4 text-orange-400" />

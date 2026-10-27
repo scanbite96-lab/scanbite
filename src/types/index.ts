@@ -47,7 +47,11 @@ export type Order = {
   items: OrderItem[];
   subtotal: number;
   tax: number;
+  discount?: number | null;
+  couponCode?: string | null;
   total: number;
+  rating?: number | null;
+  reviewFeedback?: string | null;
   status: OrderStatus;
   paymentMethod?: "counter_cash" | "upi_online" | "card" | string | null;
   paymentStatus: "unpaid" | "paid" | string;

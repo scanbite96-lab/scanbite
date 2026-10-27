@@ -24,3 +24,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create table" }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const tableId = searchParams.get("tableId");
+
+    if (!tableId) {
+      return NextResponse.json({ error: "Missing tableId" }, { status: 400 });
+    }
+
+    await prisma.table.delete({
+      where: { id: tableId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Failed to delete table:", err);
+    return NextResponse.json({ error: "Failed to delete table" }, { status: 500 });
+  }
+}

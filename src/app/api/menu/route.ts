@@ -29,3 +29,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Failed to create menu item" }, { status: 500 });
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const itemId = searchParams.get("itemId");
+
+    if (!itemId) {
+      return NextResponse.json({ error: "Missing itemId" }, { status: 400 });
+    }
+
+    await prisma.menuItem.delete({
+      where: { id: itemId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Failed to delete menu item:", err);
+    return NextResponse.json({ error: "Failed to delete menu item" }, { status: 500 });
+  }
+}

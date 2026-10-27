@@ -75,6 +75,10 @@ model Order {
   customerPhone  String?
   subtotal       Float
   tax            Float
+  discount       Float           @default(0.0)
+  couponCode     String?
+  rating         Int?
+  reviewFeedback String?
   total          Float
   status         String          @default("pending") // pending, cooking, ready, served, completed, cancelled
   paymentMethod  String          @default("counter_cash")
