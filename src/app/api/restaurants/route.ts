@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRestaurantBySlug } from "@/lib/store";
+import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,7 +35,14 @@ export async function GET(request: NextRequest) {
         tables: true,
       },
     });
-    return NextResponse.json(restaurants);
+
+    // Strip sensitive passwords & staff pins from public restaurant list
+    const safeRestaurants = restaurants.map((r) => {
+      const { password, staffPin, ...safe } = r as Record<string, unknown>;
+      return safe;
+    });
+
+    return NextResponse.json(safeRestaurants);
   } catch (err) {
     console.error("GET /api/restaurants error:", err);
     return NextResponse.json({ error: "Failed to fetch restaurants" }, { status: 500 });
@@ -52,6 +60,20 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Missing restaurant slug" }, { status: 400 });
     }
 
+    // Authentication & Role Check
+    const session = getSessionUser(request);
+    const isSuperAdmin = isSuperAdminRequest(request);
+
+    if (!session && !isSuperAdmin) {
+      return NextResponse.json({ error: "Unauthorized: Owner login required." }, { status: 401 });
+    }
+    if (session?.role === "staff") {
+      return NextResponse.json({ error: "Unauthorized: Staff cannot modify restaurant settings." }, { status: 403 });
+    }
+    if (!isSuperAdmin && session?.slug !== slug && session?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: You cannot modify another restaurant." }, { status: 403 });
+    }
+
     const { name, tagline, phone, address, currencySymbol, taxRatePercent, upiId } = body;
 
     const updated = await prisma.restaurant.update({
@@ -67,7 +89,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    return NextResponse.json(updated);
+    const { password, staffPin, ...safeUpdated } = updated as Record<string, unknown>;
+    return NextResponse.json(safeUpdated);
   } catch (err) {
     console.error("Failed to update restaurant settings:", err);
     return NextResponse.json({ error: "Failed to update restaurant settings" }, { status: 500 });

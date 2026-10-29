@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRestaurantBySlug } from "@/lib/store";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -31,6 +32,19 @@ export async function PATCH(
   { params }: { params: { slug: string } }
 ) {
   try {
+    const session = getSessionUser(request);
+    const isSuperAdmin = isSuperAdminRequest(request);
+
+    if (!session && !isSuperAdmin) {
+      return NextResponse.json({ error: "Unauthorized: Owner login required." }, { status: 401 });
+    }
+    if (session?.role === "staff") {
+      return NextResponse.json({ error: "Unauthorized: Staff cannot modify restaurant settings." }, { status: 403 });
+    }
+    if (!isSuperAdmin && session?.slug !== params.slug && session?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: You cannot modify another restaurant." }, { status: 403 });
+    }
+
     const body = await request.json();
     const { name, tagline, phone, address, currencySymbol, taxRatePercent, upiId } = body;
 
@@ -47,7 +61,8 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json(updated);
+    const { password, staffPin, ...safeUpdated } = updated as Record<string, unknown>;
+    return NextResponse.json(safeUpdated);
   } catch (err) {
     console.error("Failed to update restaurant settings:", err);
     return NextResponse.json({ error: "Failed to update restaurant settings" }, { status: 500 });

@@ -12,7 +12,9 @@ export const getRestaurantBySlug = async (slug: string): Promise<Restaurant | nu
       },
     });
     if (!rest) return null;
-    return rest as unknown as Restaurant;
+    // Omit sensitive credentials from public output
+    const { password, staffPin, ...safeRest } = rest as Record<string, unknown>;
+    return safeRest as unknown as Restaurant;
   } catch (err) {
     console.error("Prisma getRestaurantBySlug error:", err);
     return null;
@@ -162,6 +164,31 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
       },
       include: { items: true },
     });
+
+    // Auto-decrement portion counts and auto-mark sold out at 0 portions
+    for (const it of orderData.items) {
+      if (it.menuItemId && it.menuItemId !== "item-custom") {
+        try {
+          const menuItem = await prisma.menuItem.findUnique({
+            where: { id: it.menuItemId },
+            select: { id: true, stockCount: true, isAvailable: true },
+          });
+
+          if (menuItem && menuItem.stockCount !== null && menuItem.stockCount !== undefined && menuItem.stockCount >= 0) {
+            const remaining = Math.max(0, menuItem.stockCount - it.quantity);
+            await prisma.menuItem.update({
+              where: { id: menuItem.id },
+              data: {
+                stockCount: remaining,
+                ...(remaining === 0 ? { isAvailable: false } : {}),
+              },
+            });
+          }
+        } catch (stockErr) {
+          console.warn("Stock decrement warning for item:", it.menuItemId, stockErr);
+        }
+      }
+    }
 
     return {
       ...order,
@@ -334,9 +361,13 @@ export const toggleItemAvailability = async (slug: string, itemId: string): Prom
       where: { id: itemId },
     });
     if (!item) return null;
+    const nextAvailable = !item.isAvailable;
     const updated = await prisma.menuItem.update({
       where: { id: itemId },
-      data: { isAvailable: !item.isAvailable },
+      data: { 
+        isAvailable: nextAvailable,
+        ...(nextAvailable && item.stockCount === 0 ? { stockCount: -1 } : {}),
+      },
     });
     return updated as unknown as MenuItem;
   } catch (err) {
@@ -414,6 +445,86 @@ export const getSuperAdminOverview = async () => {
       planBreakdown.pro * 2499 +
       planBreakdown.enterprise * 4999;
 
+    // Today's statistics
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    let todayOrdersCount = 0;
+    let todayGmv = 0;
+
+    restaurants.forEach((r) => {
+      r.orders.forEach((o) => {
+        if (new Date(o.createdAt) >= startOfToday) {
+          todayOrdersCount++;
+          if (o.status !== "cancelled") {
+            todayGmv += o.total || 0;
+          }
+        }
+      });
+    });
+
+    const averageOrderValue = totalOrders > 0 ? Math.round(totalPlatformGmv / totalOrders) : 0;
+
+    // Fetch Global Recent Orders across all restaurants (latest 60)
+    const recentOrders = await prisma.order.findMany({
+      take: 60,
+      orderBy: { createdAt: "desc" },
+      include: {
+        restaurant: {
+          select: { id: true, name: true, slug: true, city: true },
+        },
+        items: true,
+      },
+    });
+
+    const formattedRecentOrders = recentOrders.map((o) => ({
+      id: o.id,
+      restaurantId: o.restaurantId,
+      restaurantName: o.restaurant?.name || "Unknown",
+      restaurantSlug: o.restaurant?.slug || "",
+      city: o.restaurant?.city || "Delhi NCR",
+      tableNumber: o.tableNumber,
+      customerName: o.customerName || "Walk-in Guest",
+      customerPhone: o.customerPhone || null,
+      subtotal: o.subtotal,
+      tax: o.tax,
+      discount: o.discount || 0,
+      total: o.total,
+      status: o.status,
+      paymentMethod: o.paymentMethod,
+      paymentStatus: o.paymentStatus,
+      itemsCount: o.items.reduce((s, it) => s + it.quantity, 0),
+      itemsSummary: o.items.map((it) => `${it.quantity}x ${it.name}`).join(", "),
+      createdAt: o.createdAt.toISOString(),
+    }));
+
+    // System Diagnostics
+    const [totalMenuItemsCount, totalCategoriesCount] = await Promise.all([
+      prisma.menuItem.count(),
+      prisma.category.count(),
+    ]);
+
+    const mem = process.memoryUsage();
+    const systemHealth = {
+      dbStatus: "Healthy (Connected)",
+      nodeVersion: process.version,
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+      uptimeSeconds: Math.round(process.uptime()),
+      totalMenuItems: totalMenuItemsCount,
+      totalCategories: totalCategoriesCount,
+      totalTables,
+      totalOrders,
+      totalRestaurants: restaurants.length,
+      serverTime: new Date().toISOString(),
+    };
+
+    // Collect distinct cities
+    const citiesSet = new Set<string>();
+    restaurants.forEach((r) => {
+      if (r.city && r.city.trim()) citiesSet.add(r.city.trim());
+    });
+    const cities = Array.from(citiesSet);
+
     const setting = await prisma.platformSetting.findUnique({
       where: { id: "global" },
     });
@@ -426,9 +537,15 @@ export const getSuperAdminOverview = async () => {
         totalOrders,
         totalPlatformGmv: Math.round(totalPlatformGmv),
         estimatedMrr,
+        todayOrdersCount,
+        todayGmv: Math.round(todayGmv),
+        averageOrderValue,
         planBreakdown,
       },
       restaurants: restaurantRows,
+      recentOrders: formattedRecentOrders,
+      systemHealth,
+      cities,
       platformSetting: setting || {
         id: "global",
         broadcastMessage: null,

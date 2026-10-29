@@ -1,28 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
 import { AuthUser } from "@/types";
-
-const AUTH_COOKIE_NAME = "scanbite_auth_token";
-const SECRET_KEY = process.env.AUTH_SECRET || "scanbite-super-secret-salt-2026";
-
-function signToken(payload: AuthUser): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", SECRET_KEY).update(data).digest("base64url");
-  return `${data}.${signature}`;
-}
-
-function verifyToken(token: string): AuthUser | null {
-  try {
-    const [data, signature] = token.split(".");
-    if (!data || !signature) return null;
-    const expectedSig = crypto.createHmac("sha256", SECRET_KEY).update(data).digest("base64url");
-    if (signature !== expectedSig) return null;
-    return JSON.parse(Buffer.from(data, "base64url").toString("utf8")) as AuthUser;
-  } catch {
-    return null;
-  }
-}
+import { signToken, verifyToken, AUTH_COOKIE_NAME, isSuperAdminRequest } from "@/lib/auth";
 
 // GET /api/auth -> Get current logged-in user profile
 export async function GET(request: NextRequest) {
@@ -56,6 +35,41 @@ export async function GET(request: NextRequest) {
       return res;
     }
 
+    let staffPermissions = session.permissions;
+    let staffName = session.staffName || restaurant.ownerName;
+    let staffRole = session.staffRole;
+
+    // If session is staff and tied to a specific staffId, verify active status in DB
+    if (session.role === "staff" && session.staffId) {
+      const dbStaff = await prisma.staff.findUnique({
+        where: { id: session.staffId },
+      });
+      if (!dbStaff || !dbStaff.isActive) {
+        const res = NextResponse.json({ 
+          authenticated: false, 
+          error: "Your staff account has been deactivated by the restaurant owner." 
+        });
+        res.cookies.delete(AUTH_COOKIE_NAME);
+        return res;
+      }
+      staffName = dbStaff.name;
+      staffRole = dbStaff.role;
+      staffPermissions = {
+        canManageOrders: dbStaff.canManageOrders,
+        canManageMenu: dbStaff.canManageMenu,
+        canManageBilling: dbStaff.canManageBilling,
+        canManageRequests: dbStaff.canManageRequests,
+      };
+    } else if (session.role === "owner" || session.role === "admin") {
+      // Owner has full permissions by default
+      staffPermissions = {
+        canManageOrders: true,
+        canManageMenu: true,
+        canManageBilling: true,
+        canManageRequests: true,
+      };
+    }
+
     return NextResponse.json({
       authenticated: true,
       user: {
@@ -66,6 +80,10 @@ export async function GET(request: NextRequest) {
         ownerName: restaurant.ownerName,
         role: session.role || "owner",
         staffPin: restaurant.staffPin || "1234",
+        staffId: session.staffId,
+        staffName,
+        staffRole,
+        permissions: staffPermissions,
       },
     });
   } catch {
@@ -121,6 +139,12 @@ export async function POST(request: NextRequest) {
         ownerEmail: restaurant.ownerEmail,
         ownerName: restaurant.ownerName,
         role: "owner",
+        permissions: {
+          canManageOrders: true,
+          canManageMenu: true,
+          canManageBilling: true,
+          canManageRequests: true,
+        },
       };
 
       const token = signToken(user);
@@ -152,35 +176,84 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const cleanSlug = String(slug).trim().toLowerCase();
+      const cleanPin = String(pin).trim();
+
       const restaurant = await prisma.restaurant.findUnique({
-        where: { slug: String(slug).trim().toLowerCase() },
+        where: { slug: cleanSlug },
       });
 
       if (!restaurant) {
         return NextResponse.json({ error: "Restaurant not found." }, { status: 404 });
       }
 
-      const expectedPin = restaurant.staffPin || "1234";
-      if (String(pin).trim() !== expectedPin) {
-        return NextResponse.json(
-          { error: "Incorrect 4-digit PIN. Default is 1234." },
-          { status: 401 }
-        );
-      }
+      // Check if there is an individual staff member registered with this PIN
+      const specificStaff = await prisma.staff.findFirst({
+        where: {
+          restaurantId: restaurant.id,
+          pin: cleanPin,
+        },
+      });
 
-      const user: AuthUser = {
-        id: restaurant.id,
-        name: restaurant.name,
-        slug: restaurant.slug,
-        ownerEmail: restaurant.ownerEmail,
-        ownerName: "Staff Member",
-        role: "staff",
-      };
+      let user: AuthUser;
+
+      if (specificStaff) {
+        if (!specificStaff.isActive) {
+          return NextResponse.json(
+            { error: `Account for ${specificStaff.name} is currently deactivated by the restaurant owner.` },
+            { status: 403 }
+          );
+        }
+
+        user = {
+          id: restaurant.id,
+          name: restaurant.name,
+          slug: restaurant.slug,
+          ownerEmail: restaurant.ownerEmail,
+          ownerName: specificStaff.name,
+          role: "staff",
+          staffId: specificStaff.id,
+          staffName: specificStaff.name,
+          staffRole: specificStaff.role,
+          permissions: {
+            canManageOrders: specificStaff.canManageOrders,
+            canManageMenu: specificStaff.canManageMenu,
+            canManageBilling: specificStaff.canManageBilling,
+            canManageRequests: specificStaff.canManageRequests,
+          },
+        };
+      } else {
+        // Fallback to default restaurant-wide staffPin
+        const expectedPin = restaurant.staffPin || "1234";
+        if (cleanPin !== expectedPin) {
+          return NextResponse.json(
+            { error: "Incorrect 4-digit PIN. Please verify with the restaurant owner." },
+            { status: 401 }
+          );
+        }
+
+        user = {
+          id: restaurant.id,
+          name: restaurant.name,
+          slug: restaurant.slug,
+          ownerEmail: restaurant.ownerEmail,
+          ownerName: "Staff Member",
+          role: "staff",
+          staffName: "Staff Member",
+          staffRole: "staff",
+          permissions: {
+            canManageOrders: true,
+            canManageMenu: true,
+            canManageBilling: true,
+            canManageRequests: true,
+          },
+        };
+      }
 
       const token = signToken(user);
       const response = NextResponse.json({
         success: true,
-        message: "Staff PIN verified successfully.",
+        message: specificStaff ? `Welcome, ${specificStaff.name} (${specificStaff.role.toUpperCase()})!` : "Staff PIN verified successfully.",
         user,
       });
 
@@ -270,6 +343,10 @@ export async function POST(request: NextRequest) {
 
     // 5. SUPER ADMIN 1-CLICK IMPERSONATE LOGIN
     if (action === "impersonate") {
+      if (!isSuperAdminRequest(request)) {
+        return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 403 });
+      }
+
       const { slug } = body;
       if (!slug) {
         return NextResponse.json({ error: "Restaurant slug required for impersonation." }, { status: 400 });

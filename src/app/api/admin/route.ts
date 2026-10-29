@@ -6,20 +6,15 @@ import {
   updatePlatformSetting 
 } from "@/lib/store";
 import { prisma } from "@/lib/prisma";
-import crypto from "crypto";
 import { AuthUser } from "@/types";
+import { signToken, AUTH_COOKIE_NAME, isSuperAdminRequest } from "@/lib/auth";
 
-const AUTH_COOKIE_NAME = "scanbite_auth_token";
-const SECRET_KEY = process.env.AUTH_SECRET || "scanbite-super-secret-salt-2026";
-
-function signToken(payload: AuthUser): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", SECRET_KEY).update(data).digest("base64url");
-  return `${data}.${signature}`;
-}
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!isSuperAdminRequest(request)) {
+      return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 401 });
+    }
+
     const data = await getSuperAdminOverview();
     if (!data) {
       return NextResponse.json({ error: "Failed to load admin metrics" }, { status: 500 });
@@ -33,6 +28,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isSuperAdminRequest(request)) {
+      return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 401 });
+    }
+
     const body = await request.json();
     const { action, slug } = body;
 
@@ -82,8 +81,13 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    if (!isSuperAdminRequest(request)) {
+      return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { action, restaurantId, ...payload } = body;
+    const { action, restaurantId, id, ...payload } = body;
+    const targetId = restaurantId || id;
 
     if (action === "update-broadcast") {
       const setting = await updatePlatformSetting(
@@ -94,8 +98,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: true, setting });
     }
 
-    if (action === "update-restaurant" && restaurantId) {
-      const updated = await updateSuperAdminRestaurant(restaurantId, payload);
+    if (action === "update-restaurant" && targetId) {
+      const updated = await updateSuperAdminRestaurant(targetId, payload);
       if (!updated) {
         return NextResponse.json({ error: "Restaurant not found or update failed" }, { status: 404 });
       }
@@ -111,8 +115,12 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (!isSuperAdminRequest(request)) {
+      return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const restaurantId = searchParams.get("restaurantId");
+    const restaurantId = searchParams.get("restaurantId") || searchParams.get("id");
 
     if (!restaurantId) {
       return NextResponse.json({ error: "Missing restaurantId" }, { status: 400 });

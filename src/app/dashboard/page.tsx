@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { 
@@ -10,7 +8,8 @@ import {
   ServiceRequest, 
   MenuItem, 
   Table,
-  AuthUser 
+  AuthUser,
+  Staff
 } from "@/types";
 import { 
   ChefHat, 
@@ -53,11 +52,19 @@ import {
   CheckCircle2,
   AlertCircle,
   Megaphone,
-  Wrench
+  Wrench,
+  Clock,
+  UserPlus,
+  Package,
+  Boxes,
+  UserCheck,
+  UserX,
+  BadgeCheck,
+  Pencil
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
-  const [activeTab, setActiveTab] = useState<"kds" | "analytics" | "menu" | "tables" | "settings">("kds");
+  const [activeTab, setActiveTab] = useState<"kds" | "analytics" | "menu" | "tables" | "staff" | "settings">("kds");
   const [restaurantSlug, setRestaurantSlug] = useState("grand-spice");
   const [availableRestaurants, setAvailableRestaurants] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -91,6 +98,19 @@ export default function RestaurantDashboard() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Quick Dish Stock Modal for Kitchen Staff
+  const [isStaffStockModalOpen, setIsStaffStockModalOpen] = useState(false);
+  const [stockModalSearch, setStockModalSearch] = useState("");
+
+  const isOwner = authUser?.role === "owner";
+  const isStaff = authUser?.role === "staff";
+
+  // Role-based Granular Permissions
+  const canManageOrders = isOwner || (isStaff && (authUser?.permissions?.canManageOrders ?? true));
+  const canManageMenu = isOwner || (isStaff && Boolean(authUser?.permissions?.canManageMenu));
+  const canManageBilling = isOwner || (isStaff && Boolean(authUser?.permissions?.canManageBilling));
+  const canManageRequests = isOwner || (isStaff && (authUser?.permissions?.canManageRequests ?? true));
+
   // Security Credentials in Settings
   const [newOwnerPassword, setNewOwnerPassword] = useState("");
   const [newStaffPin, setNewStaffPin] = useState("");
@@ -108,6 +128,44 @@ export default function RestaurantDashboard() {
   // KOT Slip Modal
   const [selectedKotOrder, setSelectedKotOrder] = useState<Order | null>(null);
 
+  // Stock Portion Adjustment Modal
+  const [editingStockDish, setEditingStockDish] = useState<MenuItem | null>(null);
+  const [stockPortionInput, setStockPortionInput] = useState("");
+  const [stockThresholdInput, setStockThresholdInput] = useState("5");
+  const [isSavingStock, setIsSavingStock] = useState(false);
+
+  // Staff Management State
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [isStaffLoading, setIsStaffLoading] = useState(false);
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
+  const [newStaffName, setNewStaffName] = useState("");
+  const [newStaffRole, setNewStaffRole] = useState<"waiter" | "chef" | "cashier" | "manager">("waiter");
+  const [addStaffPin, setAddStaffPin] = useState("");
+  const [newStaffPhone, setNewStaffPhone] = useState("");
+  const [newStaffIsActive, setNewStaffIsActive] = useState(true);
+  const [newStaffOrders, setNewStaffOrders] = useState(true);
+  const [newStaffMenu, setNewStaffMenu] = useState(false);
+  const [newStaffBilling, setNewStaffBilling] = useState(false);
+  const [newStaffRequests, setNewStaffRequests] = useState(true);
+  const [isSubmittingStaff, setIsSubmittingStaff] = useState(false);
+  const [staffMsg, setStaffMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [staffToast, setStaffToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [revealedPins, setRevealedPins] = useState<Record<string, boolean>>({});
+
+  // Edit Staff Modal State
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [editStaffName, setEditStaffName] = useState("");
+  const [editStaffRole, setEditStaffRole] = useState<"waiter" | "chef" | "cashier" | "manager">("waiter");
+  const [editStaffPin, setEditStaffPin] = useState("");
+  const [editStaffPhone, setEditStaffPhone] = useState("");
+  const [editStaffIsActive, setEditStaffIsActive] = useState(true);
+  const [editStaffOrders, setEditStaffOrders] = useState(true);
+  const [editStaffMenu, setEditStaffMenu] = useState(false);
+  const [editStaffBilling, setEditStaffBilling] = useState(false);
+  const [editStaffRequests, setEditStaffRequests] = useState(true);
+  const [isSavingEditStaff, setIsSavingEditStaff] = useState(false);
+  const [editStaffError, setEditStaffError] = useState<string | null>(null);
+
   // Add Table Modal State
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
   const [newTableNum, setNewTableNum] = useState("");
@@ -122,6 +180,8 @@ export default function RestaurantDashboard() {
   const [newDishIsVeg, setNewDishIsVeg] = useState(true);
   const [newDishDesc, setNewDishDesc] = useState("");
   const [newDishImage, setNewDishImage] = useState("");
+  const [newDishStock, setNewDishStock] = useState("-1");
+  const [newDishLowThreshold, setNewDishLowThreshold] = useState(5);
   const [isSubmittingDish, setIsSubmittingDish] = useState(false);
 
   // Settings Form State
@@ -154,6 +214,15 @@ export default function RestaurantDashboard() {
             setStaffRestaurantSlug(data.user.slug);
             setNewOwnerEmail(data.user.ownerEmail || "");
             setNewOwnerName(data.user.ownerName || "");
+            if (data.user.role === "owner") {
+              setActiveTab("analytics");
+            } else {
+              if (!data.user.permissions?.canManageOrders && data.user.permissions?.canManageMenu) {
+                setActiveTab("menu");
+              } else {
+                setActiveTab("kds");
+              }
+            }
           }
         }
       } catch (err) {
@@ -164,6 +233,22 @@ export default function RestaurantDashboard() {
     }
     checkAuthSession();
   }, []);
+
+  // Staff Guard: Staff can only access tabs granted by the Owner (KDS and/or Menu)
+  useEffect(() => {
+    if (isStaff) {
+      const allowedTabs: ("kds" | "menu")[] = [];
+      if (canManageOrders || canManageBilling || canManageRequests) {
+        allowedTabs.push("kds");
+      }
+      if (canManageMenu) {
+        allowedTabs.push("menu");
+      }
+      if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab as any)) {
+        setActiveTab(allowedTabs[0]);
+      }
+    }
+  }, [isStaff, canManageOrders, canManageBilling, canManageRequests, canManageMenu, activeTab]);
 
   const handleOwnerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +275,7 @@ export default function RestaurantDashboard() {
         setStaffRestaurantSlug(data.user.slug);
         setNewOwnerEmail(data.user.ownerEmail || "");
         setNewOwnerName(data.user.ownerName || "");
+        setActiveTab("analytics");
       } else {
         setLoginError(data.error || "Incorrect login credentials.");
       }
@@ -222,6 +308,11 @@ export default function RestaurantDashboard() {
       if (res.ok && data.success) {
         setAuthUser(data.user);
         setRestaurantSlug(data.user.slug);
+        if (!data.user.permissions?.canManageOrders && data.user.permissions?.canManageMenu) {
+          setActiveTab("menu");
+        } else {
+          setActiveTab("kds");
+        }
       } else {
         setLoginError(data.error || "Incorrect 4-digit staff PIN. Default is 1234.");
       }
@@ -406,6 +497,15 @@ export default function RestaurantDashboard() {
           prevRequestsCountRef.current = pendingCount;
           setServiceRequests(reqData);
         }
+
+        // Fetch Staff Directory if Owner
+        if (authUser?.role === "owner") {
+          const stRes = await fetch(`/api/staff?restaurantId=${restData.id}`);
+          if (stRes.ok) {
+            const stData = await stRes.json();
+            setStaffList(stData.staff || []);
+          }
+        }
       }
     } catch {
       // ignore
@@ -451,6 +551,10 @@ export default function RestaurantDashboard() {
 
   // Order status transitions
   const handleUpdateOrderStatus = async (orderId: string, nextStatus: Order["status"]) => {
+    if (!canManageOrders) {
+      alert("Unauthorized: You do not have permission to advance kitchen orders.");
+      return;
+    }
     try {
       const res = await fetch("/api/orders", {
         method: "PATCH",
@@ -469,6 +573,10 @@ export default function RestaurantDashboard() {
 
   // 1-Click Payment Status toggle
   const handleUpdatePaymentStatus = async (orderId: string, paymentStatus: "paid" | "unpaid") => {
+    if (!canManageBilling) {
+      alert("Unauthorized: Only Owner or staff with Billing permissions can mark orders as Paid/Unpaid.");
+      return;
+    }
     try {
       const res = await fetch("/api/orders", {
         method: "PATCH",
@@ -489,6 +597,10 @@ export default function RestaurantDashboard() {
 
   // Cancel order handler
   const handleCancelOrder = async (orderId: string, tableNumber: string) => {
+    if (!canManageOrders) {
+      alert("Unauthorized: You do not have permission to cancel orders.");
+      return;
+    }
     if (!confirm(`Are you sure you want to cancel order for ${tableNumber}? This will mark it cancelled.`)) return;
     try {
       const res = await fetch("/api/orders", {
@@ -508,6 +620,10 @@ export default function RestaurantDashboard() {
 
   // Delete Dish Handler
   const handleDeleteDish = async (itemId: string, dishName: string) => {
+    if (!isOwner) {
+      alert("Unauthorized: Only the restaurant owner can delete menu dishes.");
+      return;
+    }
     if (!confirm(`Are you sure you want to permanently delete "${dishName}" from the menu?`)) return;
     try {
       const res = await fetch(`/api/menu?itemId=${itemId}`, {
@@ -531,6 +647,10 @@ export default function RestaurantDashboard() {
 
   // Delete Table Handler
   const handleDeleteTable = async (tableId: string, tableNumber: string) => {
+    if (!isOwner) {
+      alert("Unauthorized: Only the restaurant owner can delete tables.");
+      return;
+    }
     if (!confirm(`Are you sure you want to delete "${tableNumber}" and remove its QR code?`)) return;
     try {
       const res = await fetch(`/api/tables?tableId=${tableId}`, {
@@ -555,6 +675,10 @@ export default function RestaurantDashboard() {
 
   // Attend service request
   const handleAttendRequest = async (requestId: string) => {
+    if (!canManageRequests) {
+      alert("Unauthorized: You do not have permission to attend dining table service requests.");
+      return;
+    }
     try {
       const res = await fetch("/api/service-requests", {
         method: "PATCH",
@@ -572,6 +696,10 @@ export default function RestaurantDashboard() {
   // Toggle item availability
   const handleToggleAvailability = async (itemId: string) => {
     if (!restaurant) return;
+    if (!canManageMenu) {
+      alert("Unauthorized: You do not have permission to toggle dish availability.");
+      return;
+    }
     try {
       const res = await fetch("/api/menu/toggle", {
         method: "POST",
@@ -579,12 +707,13 @@ export default function RestaurantDashboard() {
         body: JSON.stringify({ slug: restaurant.slug, itemId }),
       });
       if (res.ok) {
+        const updatedItem = await res.json();
         setRestaurant((prev) => {
           if (!prev) return prev;
           return {
             ...prev,
             menuItems: prev.menuItems.map((item) =>
-              item.id === itemId ? { ...item, isAvailable: !item.isAvailable } : item
+              item.id === itemId ? { ...item, ...updatedItem } : item
             ),
           };
         });
@@ -597,6 +726,10 @@ export default function RestaurantDashboard() {
   // Add Table Handler
   const handleAddTableSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwner) {
+      alert("Unauthorized: Only the restaurant owner can add new tables.");
+      return;
+    }
     if (!restaurant || !newTableNum.trim()) return;
     setIsSubmittingTable(true);
     try {
@@ -623,9 +756,293 @@ export default function RestaurantDashboard() {
     }
   };
 
+  // Staff Management Handlers
+  const handleRolePresetChange = (role: "waiter" | "chef" | "cashier" | "manager") => {
+    setNewStaffRole(role);
+    if (role === "chef") {
+      setNewStaffOrders(true);
+      setNewStaffMenu(true);
+      setNewStaffBilling(false);
+      setNewStaffRequests(false);
+    } else if (role === "waiter") {
+      setNewStaffOrders(true);
+      setNewStaffMenu(false);
+      setNewStaffBilling(false);
+      setNewStaffRequests(true);
+    } else if (role === "cashier") {
+      setNewStaffOrders(true);
+      setNewStaffMenu(false);
+      setNewStaffBilling(true);
+      setNewStaffRequests(false);
+    } else if (role === "manager") {
+      setNewStaffOrders(true);
+      setNewStaffMenu(true);
+      setNewStaffBilling(true);
+      setNewStaffRequests(true);
+    }
+  };
+
+  const generateRandomPin = () => {
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    setAddStaffPin(pin);
+  };
+
+  const loadStaffMembers = async () => {
+    if (!restaurant) return;
+    setIsStaffLoading(true);
+    try {
+      const res = await fetch(`/api/staff?restaurantId=${restaurant.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setStaffList(data.staff || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsStaffLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (restaurant && isOwner && activeTab === "staff") {
+      loadStaffMembers();
+    }
+  }, [restaurant, isOwner, activeTab]);
+
+  const handleAddStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restaurant || !newStaffName.trim() || !addStaffPin.trim()) return;
+    setIsSubmittingStaff(true);
+    setStaffMsg(null);
+    try {
+      const res = await fetch("/api/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantId: restaurant.id,
+          name: newStaffName.trim(),
+          role: newStaffRole,
+          pin: addStaffPin.trim(),
+          phone: newStaffPhone.trim() || undefined,
+          isActive: newStaffIsActive,
+          canManageOrders: newStaffOrders,
+          canManageMenu: newStaffMenu,
+          canManageBilling: newStaffBilling,
+          canManageRequests: newStaffRequests,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStaffMsg({ type: "success", text: `Staff member "${newStaffName}" added successfully!` });
+        setStaffToast({ type: "success", text: `Staff member "${newStaffName}" added successfully!` });
+        setTimeout(() => setStaffToast(null), 4000);
+        setNewStaffName("");
+        setAddStaffPin("");
+        setNewStaffPhone("");
+        setIsAddStaffOpen(false);
+        loadStaffMembers();
+      } else {
+        setStaffMsg({ type: "error", text: data.error || "Failed to add staff member." });
+      }
+    } catch {
+      setStaffMsg({ type: "error", text: "Error saving staff member." });
+    } finally {
+      setIsSubmittingStaff(false);
+    }
+  };
+
+  const handleToggleStaffActive = async (staffId: string, currentStatus: boolean, name: string) => {
+    try {
+      const res = await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId,
+          isActive: !currentStatus,
+        }),
+      });
+      if (res.ok) {
+        setStaffList((prev) =>
+          prev.map((s) => (s.id === staffId ? { ...s, isActive: !currentStatus } : s))
+        );
+        setStaffToast({
+          type: "success",
+          text: `"${name}" is now ${!currentStatus ? "Online Active" : "Disabled Offline"}.`,
+        });
+        setTimeout(() => setStaffToast(null), 3500);
+      } else {
+        alert("Failed to toggle staff active status");
+      }
+    } catch {
+      alert("Error toggling staff status");
+    }
+  };
+
+  const handleToggleStaffPermission = async (
+    staffId: string,
+    permKey: "canManageOrders" | "canManageMenu" | "canManageBilling" | "canManageRequests",
+    currentVal: boolean
+  ) => {
+    try {
+      const res = await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId,
+          [permKey]: !currentVal,
+        }),
+      });
+      if (res.ok) {
+        setStaffList((prev) =>
+          prev.map((s) => (s.id === staffId ? { ...s, [permKey]: !currentVal } : s))
+        );
+        setStaffToast({
+          type: "success",
+          text: `Permission updated successfully.`,
+        });
+        setTimeout(() => setStaffToast(null), 3000);
+      } else {
+        alert("Failed to update staff permission");
+      }
+    } catch {
+      alert("Error updating permission");
+    }
+  };
+
+  const handleDeleteStaff = async (staffId: string, staffName: string) => {
+    if (!confirm(`Are you sure you want to remove staff member "${staffName}"?`)) return;
+    try {
+      const res = await fetch(`/api/staff?staffId=${staffId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setStaffList((prev) => prev.filter((s) => s.id !== staffId));
+        setStaffToast({ type: "success", text: `Staff member "${staffName}" removed successfully.` });
+        setTimeout(() => setStaffToast(null), 4000);
+      } else {
+        alert("Failed to delete staff member");
+      }
+    } catch {
+      alert("Error deleting staff member");
+    }
+  };
+
+  // Edit Staff Handlers
+  const handleEditRolePresetChange = (role: "waiter" | "chef" | "cashier" | "manager") => {
+    setEditStaffRole(role);
+    if (role === "chef") {
+      setEditStaffOrders(true);
+      setEditStaffMenu(true);
+      setEditStaffBilling(false);
+      setEditStaffRequests(false);
+    } else if (role === "waiter") {
+      setEditStaffOrders(true);
+      setEditStaffMenu(false);
+      setEditStaffBilling(false);
+      setEditStaffRequests(true);
+    } else if (role === "cashier") {
+      setEditStaffOrders(true);
+      setEditStaffMenu(false);
+      setEditStaffBilling(true);
+      setEditStaffRequests(false);
+    } else if (role === "manager") {
+      setEditStaffOrders(true);
+      setEditStaffMenu(true);
+      setEditStaffBilling(true);
+      setEditStaffRequests(true);
+    }
+  };
+
+  const generateEditRandomPin = () => {
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    setEditStaffPin(pin);
+  };
+
+  const handleEditStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStaff || !editStaffName.trim() || !editStaffPin.trim()) return;
+    setIsSavingEditStaff(true);
+    setEditStaffError(null);
+    try {
+      const res = await fetch("/api/staff", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          staffId: editingStaff.id,
+          name: editStaffName.trim(),
+          role: editStaffRole,
+          pin: editStaffPin.trim(),
+          phone: editStaffPhone.trim() || undefined,
+          isActive: editStaffIsActive,
+          canManageOrders: editStaffOrders,
+          canManageMenu: editStaffMenu,
+          canManageBilling: editStaffBilling,
+          canManageRequests: editStaffRequests,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStaffList((prev) =>
+          prev.map((s) => (s.id === editingStaff.id ? { ...s, ...data } : s))
+        );
+        setStaffToast({ type: "success", text: `Staff details for "${editStaffName}" updated successfully!` });
+        setTimeout(() => setStaffToast(null), 4000);
+        setEditingStaff(null);
+      } else {
+        setEditStaffError(data.error || "Failed to update staff member.");
+      }
+    } catch {
+      setEditStaffError("Error updating staff details.");
+    } finally {
+      setIsSavingEditStaff(false);
+    }
+  };
+
+  // Stock Portion Save Handler
+  const handleSaveStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStockDish) return;
+    setIsSavingStock(true);
+    try {
+      const newStock = stockPortionInput.trim() === "" ? -1 : Number(stockPortionInput);
+      const newThreshold = Number(stockThresholdInput) || 5;
+
+      const res = await fetch("/api/menu", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: editingStockDish.id,
+          stockCount: newStock,
+          lowStockThreshold: newThreshold,
+        }),
+      });
+      if (res.ok) {
+        const updatedItem = await res.json();
+        setRestaurant((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            menuItems: prev.menuItems.map((it) => (it.id === editingStockDish.id ? { ...it, ...updatedItem } : it)),
+          };
+        });
+        setEditingStockDish(null);
+      } else {
+        alert("Failed to save stock portions");
+      }
+    } catch {
+      alert("Error saving stock portions");
+    } finally {
+      setIsSavingStock(false);
+    }
+  };
+
   // Add Dish Handler
   const handleAddDishSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwner) {
+      alert("Unauthorized: Only the restaurant owner can add new dishes.");
+      return;
+    }
     if (!restaurant || !newDishName.trim() || !newDishPrice) return;
     setIsSubmittingDish(true);
     try {
@@ -641,6 +1058,8 @@ export default function RestaurantDashboard() {
           price: Number(newDishPrice),
           isVeg: newDishIsVeg,
           imageUrl: newDishImage.trim(),
+          stockCount: newDishStock ? Number(newDishStock) : -1,
+          lowStockThreshold: Number(newDishLowThreshold) || 5,
         }),
       });
       if (res.ok) {
@@ -662,6 +1081,10 @@ export default function RestaurantDashboard() {
 
   // Save Settings Handler
   const handleSaveSettings = async () => {
+    if (!isOwner) {
+      alert("Unauthorized: Only the restaurant owner can modify restaurant settings.");
+      return;
+    }
     if (!restaurant) return;
     setIsSavingSettings(true);
     setSettingsSaveMsg(null);
@@ -1023,7 +1446,7 @@ export default function RestaurantDashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                {availableRestaurants.length > 1 ? (
+                {isOwner && availableRestaurants.length > 1 ? (
                   <select
                     value={restaurantSlug}
                     onChange={(e) => setRestaurantSlug(e.target.value)}
@@ -1043,77 +1466,150 @@ export default function RestaurantDashboard() {
                   LIVE
                 </span>
               </div>
-              <p className="text-xs text-slate-400">Kitchen & Staff Operations Console</p>
+              <p className="text-xs text-slate-400">
+                {isOwner ? "Owner Executive & Management Command Center" : "Kitchen Display & Floor Operations"}
+              </p>
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-            <button
-              onClick={() => setActiveTab("kds")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "kds"
-                  ? "bg-orange-500 text-white shadow"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <ChefHat className="w-4 h-4" />
-              <span>Kitchen</span>
-              {filteredOrders.length > 0 && (
-                <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
-                  {filteredOrders.length}
-                </span>
+          {/* Navigation Tabs - Available for Owner and Delegated Staff */}
+          {isOwner ? (
+            <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+              <button
+                onClick={() => setActiveTab("analytics")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "analytics"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Overview</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("kds")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "kds"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <ChefHat className="w-4 h-4" />
+                <span>Live Kitchen</span>
+                {filteredOrders.length > 0 && (
+                  <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
+                    {filteredOrders.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("menu")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "menu"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Boxes className="w-4 h-4" />
+                <span>Menu &amp; Stock</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("tables")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "tables"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Tables &amp; QRs</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("staff")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "staff"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Staff &amp; Roles</span>
+                {staffList.length > 0 && (
+                  <span className="bg-slate-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {staffList.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  activeTab === "settings"
+                    ? "bg-orange-500 text-white shadow"
+                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span>Settings &amp; PIN</span>
+              </button>
+            </nav>
+          ) : (
+            <div className="flex items-center gap-2">
+              <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+                {canManageOrders && (
+                  <button
+                    onClick={() => setActiveTab("kds")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      activeTab === "kds"
+                        ? "bg-orange-500 text-white shadow"
+                        : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                    }`}
+                  >
+                    <ChefHat className="w-4 h-4" />
+                    <span>Kitchen KDS</span>
+                    {filteredOrders.length > 0 && (
+                      <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
+                        {filteredOrders.length}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {canManageMenu && (
+                  <button
+                    onClick={() => setActiveTab("menu")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      activeTab === "menu"
+                        ? "bg-orange-500 text-white shadow"
+                        : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                    }`}
+                  >
+                    <Boxes className="w-4 h-4" />
+                    <span>Menu &amp; Stock</span>
+                  </button>
+                )}
+              </nav>
+
+              <div className="bg-amber-950/60 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                <ChefHat className="w-4 h-4 text-amber-400" />
+                <span>{authUser?.staffName || "Staff"} ({authUser?.staffRole?.toUpperCase() || "STAFF"})</span>
+              </div>
+
+              {canManageMenu && (
+                <button
+                  onClick={() => setIsStaffStockModalOpen(true)}
+                  className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
+                  title="Mark Finished Dishes Out of Stock"
+                >
+                  <Ban className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Mark Sold Out</span>
+                </button>
               )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab("analytics")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "analytics"
-                  ? "bg-orange-500 text-white shadow"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>Analytics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("menu")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "menu"
-                  ? "bg-orange-500 text-white shadow"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <MenuIcon className="w-4 h-4" />
-              <span>Menu</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("tables")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "tables"
-                  ? "bg-orange-500 text-white shadow"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>QRs</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeTab === "settings"
-                  ? "bg-orange-500 text-white shadow"
-                  : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </button>
-          </nav>
+            </div>
+          )}
 
           {/* Quick Sound Toggle & Account Controls */}
           <div className="flex items-center gap-2">
@@ -1154,30 +1650,22 @@ export default function RestaurantDashboard() {
               <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
             </a>
 
-            <Link
-              href="/admin"
-              className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 text-xs font-bold text-amber-300 border border-amber-600/40 transition"
-              title="Super Admin Master Console"
-            >
-              <span>👑 Super Admin</span>
-            </Link>
-
             {/* User Account Info & Sign Out */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
               <div className="hidden sm:flex flex-col text-right">
                 <span className="text-[11px] font-bold text-white flex items-center justify-end gap-1">
-                  {authUser?.role === "owner" ? (
+                  {isOwner ? (
                     <span className="text-amber-400 font-extrabold flex items-center gap-1">
-                      👑 {authUser.ownerName || restaurant.name}
+                      👑 {authUser?.ownerName || restaurant.name} (Owner)
                     </span>
                   ) : (
                     <span className="text-cyan-400 font-extrabold flex items-center gap-1">
-                      👨‍🍳 Staff Mode
+                      👨‍🍳 Kitchen Staff
                     </span>
                   )}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  {authUser?.ownerEmail || restaurant.slug}
+                  {isOwner ? (authUser?.ownerEmail || restaurant.slug) : "Floor Mode"}
                 </span>
               </div>
 
@@ -1218,7 +1706,16 @@ export default function RestaurantDashboard() {
       {/* Account Suspended Alert */}
       {restaurant.isActive === false && (
         <div className="bg-rose-600 text-white p-3 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+          <Ban className="w-4 h-4 flex-shrink-0" />
           <span>⚠️ Account Suspended: Customer digital QR ordering is currently disabled for this restaurant. Please contact platform admin to renew subscription.</span>
+        </div>
+      )}
+
+      {/* Plan Expired Alert */}
+      {restaurant.planExpiresAt && new Date(restaurant.planExpiresAt) < new Date() && (
+        <div className="bg-amber-600 text-white px-4 py-2.5 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+          <Clock className="w-4 h-4 flex-shrink-0 animate-pulse" />
+          <span>⚠️ Plan Expired: Subscription ended on {new Date(restaurant.planExpiresAt).toLocaleDateString()}. Please renew to avoid disruptions in digital table ordering.</span>
         </div>
       )}
 
@@ -1599,8 +2096,8 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 2: BUSINESS ANALYTICS ===================== */}
-        {activeTab === "analytics" && (
+        {/* ===================== TAB 2: BUSINESS ANALYTICS (OWNER ONLY) ===================== */}
+        {isOwner && activeTab === "analytics" && (
           <div className="space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1679,14 +2176,17 @@ export default function RestaurantDashboard() {
         )}
 
         {/* ===================== TAB 3: MENU & STOCK MANAGEMENT ===================== */}
-        {activeTab === "menu" && (
+        {(isOwner || canManageMenu) && activeTab === "menu" && (
           <div className="space-y-6">
             {/* Header / Filter */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h2 className="text-base font-bold text-slate-900">Menu Catalog & Instant Stock Toggle</h2>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Boxes className="w-5 h-5 text-orange-600" />
+                  <span>Menu Catalog &amp; Stock Portion Tracking (स्टॉक एवं पोर्शन नियंत्रण)</span>
+                </h2>
                 <p className="text-xs text-slate-500">
-                  Switch any finished dish to &ldquo;Out of Stock&rdquo; to instantly prevent diner orders.
+                  Track remaining daily portions, set low stock alert thresholds, and toggle Sold Out when batches finish.
                 </p>
               </div>
 
@@ -1702,12 +2202,14 @@ export default function RestaurantDashboard() {
                   />
                 </div>
 
-                <button
-                  onClick={() => setIsAddDishOpen(true)}
-                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
-                >
-                  <Plus className="w-4 h-4" /> Add New Dish
-                </button>
+                {isOwner && (
+                  <button
+                    onClick={() => setIsAddDishOpen(true)}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20"
+                  >
+                    <Plus className="w-4 h-4" /> Add New Dish
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1720,8 +2222,9 @@ export default function RestaurantDashboard() {
                     <th className="py-3 px-4">Category</th>
                     <th className="py-3 px-4">Price</th>
                     <th className="py-3 px-4">Type</th>
+                    <th className="py-3 px-4">Stock Portions (स्टॉक)</th>
                     <th className="py-3 px-4">Live Availability</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    {isOwner && <th className="py-3 px-4 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -1729,6 +2232,10 @@ export default function RestaurantDashboard() {
                     .filter((it) => it.name.toLowerCase().includes(menuSearch.toLowerCase()))
                     .map((item) => {
                       const category = restaurant.categories.find((c) => c.id === item.categoryId);
+                      const isUnlimited = item.stockCount === null || item.stockCount === undefined || item.stockCount < 0;
+                      const isSoldOut = !item.isAvailable || item.stockCount === 0;
+                      const isLowStock = !isUnlimited && !isSoldOut && item.stockCount !== null && item.stockCount !== undefined && item.stockCount <= (item.lowStockThreshold ?? 5);
+
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 transition">
                           <td className="py-3 px-4 flex items-center gap-3">
@@ -1758,6 +2265,45 @@ export default function RestaurantDashboard() {
                               {item.isVeg ? "🟢 Veg" : "🔴 Non-Veg"}
                             </span>
                           </td>
+
+                          {/* Stock Portion Column */}
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              {isUnlimited ? (
+                                <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-[11px]">
+                                  <span>♾️ Unlimited</span>
+                                </span>
+                              ) : isSoldOut ? (
+                                <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 font-extrabold px-2.5 py-1 rounded-lg text-[11px]">
+                                  <span>🔴 Sold Out (0)</span>
+                                </span>
+                              ) : isLowStock ? (
+                                <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-300 font-extrabold px-2.5 py-1 rounded-lg text-[11px]">
+                                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                                  <span>Low: {item.stockCount} left</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold px-2.5 py-1 rounded-lg text-[11px]">
+                                  <span>🟢 {item.stockCount} left</span>
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingStockDish(item);
+                                  setStockPortionInput(item.stockCount !== null && item.stockCount !== undefined ? item.stockCount.toString() : "-1");
+                                  setStockThresholdInput((item.lowStockThreshold ?? 5).toString());
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-bold flex items-center gap-1 transition"
+                                title="Adjust Daily Stock Portions"
+                              >
+                                <Boxes className="w-3.5 h-3.5 text-slate-600" />
+                                <span>Adjust</span>
+                              </button>
+                            </div>
+                          </td>
+
                           <td className="py-3 px-4">
                             <button
                               onClick={() => handleToggleAvailability(item.id)}
@@ -1775,15 +2321,18 @@ export default function RestaurantDashboard() {
                               <span>{item.isAvailable ? "In Stock (Available)" : "Sold Out (Disabled)"}</span>
                             </button>
                           </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleDeleteDish(item.id, item.name)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                              title={`Delete "${item.name}"`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+
+                          {isOwner && (
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleDeleteDish(item.id, item.name)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                title={`Delete "${item.name}"`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -1793,8 +2342,8 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR ===================== */}
-        {activeTab === "tables" && (
+        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR (OWNER ONLY) ===================== */}
+        {isOwner && activeTab === "tables" && (
           <div className="space-y-6">
             {/* Action Bar */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
@@ -1911,8 +2460,301 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 5: SETTINGS ===================== */}
-        {activeTab === "settings" && (
+        {/* ===================== TAB 5: STAFF & ROLE DELEGATION (OWNER ONLY) ===================== */}
+        {isOwner && activeTab === "staff" && (
+          <div className="space-y-6">
+            {/* Header & Add Button */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-orange-600" />
+                  <span>Staff &amp; Role Delegation (स्टाफ़ प्रबंधन एवं अधिकार)</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Add staff members, assign individual 4-digit PINs, toggle online access, and configure who manages kitchen, orders, menu stock, or billing.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setIsAddStaffOpen(true);
+                  setStaffMsg(null);
+                  handleRolePresetChange("waiter");
+                  generateRandomPin();
+                }}
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Add Staff Member</span>
+              </button>
+            </div>
+
+            {/* Visual Feedback Toast */}
+            {staffToast && (
+              <div
+                className={`p-3.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 border ${
+                  staffToast.type === "success"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-rose-50 text-rose-800 border-rose-200"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{staffToast.text}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStaffToast(null)}
+                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Total Staff</span>
+                  <Users className="w-4 h-4 text-slate-600" />
+                </div>
+                <div className="text-2xl font-black text-slate-900">{staffList.length}</div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Registered team members</p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Active Online</span>
+                  <UserCheck className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-black text-emerald-600">
+                  {staffList.filter((s) => s.isActive).length}
+                </div>
+                <p className="text-[10px] text-emerald-600 mt-0.5">Enabled for login</p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Chefs (Kitchen)</span>
+                  <ChefHat className="w-4 h-4 text-amber-500" />
+                </div>
+                <div className="text-2xl font-black text-amber-600">
+                  {staffList.filter((s) => s.role === "chef").length}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Kitchen staff</p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between text-slate-400 mb-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wider">Service &amp; Billing</span>
+                  <CreditCard className="w-4 h-4 text-sky-500" />
+                </div>
+                <div className="text-2xl font-black text-sky-600">
+                  {staffList.filter((s) => ["waiter", "cashier", "manager"].includes(s.role)).length}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">Waiters &amp; Cashiers</p>
+              </div>
+            </div>
+
+            {/* Staff Table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+              {isStaffLoading ? (
+                <div className="p-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-orange-500" />
+                  <span>Loading team directory...</span>
+                </div>
+              ) : staffList.length === 0 ? (
+                <div className="p-12 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto mb-3">
+                    <UserPlus className="w-6 h-6" />
+                  </div>
+                  <h3 className="font-bold text-sm text-slate-800">No individual staff members added yet</h3>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">
+                    Your team is currently using the restaurant default PIN ({(restaurant as any).staffPin || "1234"}). Add staff members to give individual roles, PINs, and granular rights!
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIsAddStaffOpen(true);
+                      setStaffMsg(null);
+                      handleRolePresetChange("waiter");
+                      generateRandomPin();
+                    }}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow"
+                  >
+                    + Add First Staff Member
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Staff Member</th>
+                        <th className="py-3 px-4">Role</th>
+                        <th className="py-3 px-4">Online Status (इनेबल/डिसेबल)</th>
+                        <th className="py-3 px-4">Quick PIN</th>
+                        <th className="py-3 px-4">Delegated Rights (हाथ में क्या-क्या है)</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800">
+                      {staffList.map((st) => {
+                        const isRevealed = revealedPins[st.id];
+                        const roleColor = 
+                          st.role === "chef" ? "bg-amber-100 text-amber-800 border-amber-200" :
+                          st.role === "manager" ? "bg-purple-100 text-purple-800 border-purple-200" :
+                          st.role === "cashier" ? "bg-sky-100 text-sky-800 border-sky-200" :
+                          "bg-emerald-100 text-emerald-800 border-emerald-200";
+
+                        return (
+                          <tr key={st.id} className="hover:bg-slate-50/70 transition">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">{st.name}</div>
+                              {st.phone && <div className="text-[11px] text-slate-400">{st.phone}</div>}
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <span className={`inline-flex items-center gap-1 font-bold px-2.5 py-0.5 rounded-full text-[10px] border capitalize ${roleColor}`}>
+                                {st.role === "chef" && "👨‍🍳 Chef"}
+                                {st.role === "waiter" && "🤵 Waiter"}
+                                {st.role === "cashier" && "💳 Cashier"}
+                                {st.role === "manager" && "👔 Manager"}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => handleToggleStaffActive(st.id, st.isActive, st.name)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 border ${
+                                  st.isActive
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200"
+                                }`}
+                                title="Click to toggle online active status"
+                              >
+                                <span className={`w-2 h-2 rounded-full ${st.isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                                <span>{st.isActive ? "Online Active" : "Disabled Offline"}</span>
+                              </button>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 font-mono">
+                                <span className="font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                                  {isRevealed ? st.pin : "••••"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setRevealedPins((prev) => ({ ...prev, [st.id]: !prev[st.id] }))}
+                                  className="text-slate-400 hover:text-slate-700 p-1 rounded"
+                                  title={isRevealed ? "Hide PIN" : "Reveal PIN"}
+                                >
+                                  {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                </button>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffPermission(st.id, "canManageOrders", st.canManageOrders)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    st.canManageOrders
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                  }`}
+                                  title="Click to toggle Orders / Kitchen KDS permission"
+                                >
+                                  🍳 Orders / KDS
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffPermission(st.id, "canManageMenu", st.canManageMenu)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    st.canManageMenu
+                                      ? "bg-amber-50 text-amber-800 border-amber-300"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                  }`}
+                                  title="Click to toggle Menu & Stock Portions permission"
+                                >
+                                  📋 Menu &amp; Stock
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffPermission(st.id, "canManageBilling", st.canManageBilling)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    st.canManageBilling
+                                      ? "bg-sky-50 text-sky-800 border-sky-300"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                  }`}
+                                  title="Click to toggle Billing & Payment Clearance permission"
+                                >
+                                  💳 Billing / Paid
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffPermission(st.id, "canManageRequests", st.canManageRequests)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                                    st.canManageRequests
+                                      ? "bg-purple-50 text-purple-800 border-purple-300"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                  }`}
+                                  title="Click to toggle Table Calls & Requests permission"
+                                >
+                                  🔔 Table Calls
+                                </button>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingStaff(st);
+                                    setEditStaffName(st.name);
+                                    setEditStaffRole(st.role as "waiter" | "chef" | "cashier" | "manager");
+                                    setEditStaffPin(st.pin);
+                                    setEditStaffPhone(st.phone || "");
+                                    setEditStaffIsActive(st.isActive);
+                                    setEditStaffOrders(st.canManageOrders);
+                                    setEditStaffMenu(st.canManageMenu);
+                                    setEditStaffBilling(st.canManageBilling);
+                                    setEditStaffRequests(st.canManageRequests);
+                                    setEditStaffError(null);
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition"
+                                  title={`Edit "${st.name}"`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStaff(st.id, st.name)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                  title={`Remove "${st.name}"`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB 6: SETTINGS (OWNER ONLY) ===================== */}
+        {isOwner && activeTab === "settings" && (
           <div className="max-w-2xl bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
             <div>
               <h2 className="text-lg font-bold text-slate-900">Restaurant & Billing Settings</h2>
@@ -2069,6 +2911,9 @@ export default function RestaurantDashboard() {
                       onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                       className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-mono tracking-widest text-center font-bold focus:outline-none focus:border-orange-500"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1 font-medium">
+                      🔒 Staff members who sign in with this 4-digit PIN can ONLY view live kitchen orders and table requests. They CANNOT see your sales revenue, customer ratings, change prices, or access these settings.
+                    </p>
                   </div>
                 </div>
 
@@ -2321,6 +3166,32 @@ export default function RestaurantDashboard() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Daily Portion Limit</label>
+                  <input
+                    type="number"
+                    placeholder="-1 for Unlimited"
+                    value={newDishStock}
+                    onChange={(e) => setNewDishStock(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">-1 = Unlimited, &ge;0 = Portions</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Low Stock Alert</label>
+                  <input
+                    type="number"
+                    placeholder="5"
+                    value={newDishLowThreshold}
+                    onChange={(e) => setNewDishLowThreshold(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Alert badge when &le; threshold</p>
+                </div>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Short Description</label>
                 <input
@@ -2417,6 +3288,763 @@ export default function RestaurantDashboard() {
                   className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50"
                 >
                   {isSubmittingTable ? "Creating..." : "Generate Table QR"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: KITCHEN STAFF QUICK STOCK TOGGLE ===================== */}
+      {isStaffStockModalOpen && restaurant && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
+                  <Ban className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Kitchen Dish Availability</h3>
+                  <p className="text-[11px] text-slate-400">Toggle Sold Out for finished dishes. Diners cannot order unavailable items.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsStaffStockModalOpen(false)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search Dishes */}
+            <div className="relative mb-3 shrink-0">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Search dishes (e.g. Paneer, Biryani, Naan)..."
+                value={stockModalSearch}
+                onChange={(e) => setStockModalSearch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500"
+              />
+            </div>
+
+            {/* Dishes List */}
+            <div className="overflow-y-auto space-y-2 pr-1 flex-1">
+              {restaurant.menuItems
+                .filter((item) =>
+                  stockModalSearch.trim() === "" ||
+                  item.name.toLowerCase().includes(stockModalSearch.toLowerCase().trim())
+                )
+                .map((item) => (
+                  <div
+                    key={item.id}
+                    className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
+                      item.isAvailable
+                        ? "bg-slate-50 border-slate-200"
+                        : "bg-rose-50/60 border-rose-200 text-slate-500"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`w-3 h-3 rounded-full shrink-0 ${
+                          item.isVeg ? "bg-emerald-500" : "bg-red-500"
+                        }`}
+                      />
+                      <div className="truncate">
+                        <span className={`text-xs font-bold block truncate ${!item.isAvailable ? "line-through text-slate-500" : "text-slate-900"}`}>
+                          {item.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {restaurant.categories.find((c) => c.id === item.categoryId)?.name || "Dish"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAvailability(item.id)}
+                      className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-xs flex items-center gap-1.5 ${
+                        item.isAvailable
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          : "bg-rose-600 hover:bg-rose-700 text-white"
+                      }`}
+                    >
+                      {item.isAvailable ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>In Stock</span>
+                        </>
+                      ) : (
+                        <>
+                          <Ban className="w-3.5 h-3.5" />
+                          <span>Sold Out</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-3 text-[11px] text-slate-400 shrink-0">
+              <span>Prices and dish modifications require Owner login.</span>
+              <button
+                type="button"
+                onClick={() => setIsStaffStockModalOpen(false)}
+                className="px-4 py-1.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: ADD NEW STAFF MEMBER ===================== */}
+      {isAddStaffOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Add Staff Member (नया स्टाफ़ सदस्य)</h3>
+                  <p className="text-[11px] text-slate-400">Assign role, 4-digit PIN, online status, and delegated responsibilities.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAddStaffOpen(false)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {staffMsg && (
+              <div
+                className={`mb-4 p-3 rounded-xl text-xs font-medium flex items-center gap-2 ${
+                  staffMsg.type === "success"
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    : "bg-rose-50 text-rose-800 border border-rose-200"
+                }`}
+              >
+                <span>{staffMsg.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAddStaffSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Staff Member Name * (नाम)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kumar / Chef Vikram"
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {/* Role Selection Presets */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Role Selection (भूमिका चुनें)</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRolePresetChange("waiter")}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      newStaffRole === "waiter"
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-900 font-extrabold shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
+                    }`}
+                  >
+                    <span className="text-lg">🤵</span>
+                    <span className="text-xs">Waiter</span>
+                    <span className="text-[10px] text-slate-400">Floor &amp; Calls</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRolePresetChange("chef")}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      newStaffRole === "chef"
+                        ? "bg-amber-50 border-amber-500 text-amber-900 font-extrabold shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
+                    }`}
+                  >
+                    <span className="text-lg">👨‍🍳</span>
+                    <span className="text-xs">Chef</span>
+                    <span className="text-[10px] text-slate-400">Kitchen &amp; Stock</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRolePresetChange("cashier")}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      newStaffRole === "cashier"
+                        ? "bg-sky-50 border-sky-500 text-sky-900 font-extrabold shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
+                    }`}
+                  >
+                    <span className="text-lg">💳</span>
+                    <span className="text-xs">Cashier</span>
+                    <span className="text-[10px] text-slate-400">Bills &amp; Payment</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRolePresetChange("manager")}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                      newStaffRole === "manager"
+                        ? "bg-purple-50 border-purple-500 text-purple-900 font-extrabold shadow-xs"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 font-medium"
+                    }`}
+                  >
+                    <span className="text-lg">👔</span>
+                    <span className="text-xs">Manager</span>
+                    <span className="text-[10px] text-slate-400">All Operations</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* PIN & Phone Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700">4-Digit Login PIN * (पिन)</label>
+                    <button
+                      type="button"
+                      onClick={generateRandomPin}
+                      className="text-[11px] font-bold text-orange-600 hover:text-orange-700"
+                    >
+                      🎲 Generate PIN
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    placeholder="e.g. 5421"
+                    value={addStaffPin}
+                    onChange={(e) => setAddStaffPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-slate-900 font-mono tracking-widest text-center font-bold text-sm focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Staff uses this PIN to quickly sign in.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Contact Phone (फ़ोन नंबर - ऐच्छिक)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. +91 98765 43210"
+                    value={newStaffPhone}
+                    onChange={(e) => setNewStaffPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Online Activation Toggle */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-900">Enable Online Access (ऑनलाइन सक्रिय करें)</div>
+                  <div className="text-[11px] text-slate-500">When enabled, this staff member can log in and manage tasks.</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={newStaffIsActive}
+                  onChange={(e) => setNewStaffIsActive(e.target.checked)}
+                  className="w-5 h-5 accent-orange-600 cursor-pointer"
+                />
+              </div>
+
+              {/* Granular Responsibilities Delegation */}
+              <div className="pt-2">
+                <label className="block font-bold text-slate-800 mb-1.5">
+                  Delegated Responsibilities (&ldquo;हाथ में क्या-क्या देना है&rdquo;)
+                </label>
+                <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>🍳 Kitchen Orders &amp; KDS</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Advance order status: Cooking, Ready, Served, Cancel.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={newStaffOrders}
+                      onChange={(e) => setNewStaffOrders(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>📋 Menu Catalog &amp; Stock Portions</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Toggle dish Sold Out and adjust daily remaining portions.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={newStaffMenu}
+                      onChange={(e) => setNewStaffMenu(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>💳 Billing &amp; Payment Clearance</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Mark orders as Paid / Unpaid and print KOT receipts.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={newStaffBilling}
+                      onChange={(e) => setNewStaffBilling(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>🔔 Dining Table Service Calls</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Receive and attend Water, Cleaning, Waiter, and Bill calls.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={newStaffRequests}
+                      onChange={(e) => setNewStaffRequests(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddStaffOpen(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingStaff}
+                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-md shadow-orange-600/20 disabled:opacity-50"
+                >
+                  {isSubmittingStaff ? "Adding Staff..." : "Save Staff Member"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: EDIT STAFF MEMBER ===================== */}
+      {editingStaff && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                  <Pencil className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Edit Staff Member / अधिकार बदलें</h3>
+                  <p className="text-[11px] text-slate-400">Modify staff details, 4-digit PIN, and delegated permissions.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {editStaffError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{editStaffError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEditStaffSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Staff Member Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kumar"
+                  value={editStaffName}
+                  onChange={(e) => setEditStaffName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {/* Role Presets */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Role &amp; Responsibility Preset</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEditRolePresetChange("waiter")}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      editStaffRole === "waiter"
+                        ? "bg-emerald-50 border-emerald-400 text-emerald-800"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="text-sm">🤵 Waiter</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Orders &amp; Calls</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEditRolePresetChange("chef")}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      editStaffRole === "chef"
+                        ? "bg-amber-50 border-amber-400 text-amber-800"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="text-sm">👨‍🍳 Chef</div>
+                    <div className="text-[10px] text-slate-400 font-normal">KDS &amp; Stock</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEditRolePresetChange("cashier")}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      editStaffRole === "cashier"
+                        ? "bg-sky-50 border-sky-400 text-sky-800"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="text-sm">💳 Cashier</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Billing &amp; Paid</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleEditRolePresetChange("manager")}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      editStaffRole === "manager"
+                        ? "bg-purple-50 border-purple-400 text-purple-800"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="text-sm">👔 Manager</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Full Floor</div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 4-digit PIN */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700">4-Digit Login PIN *</label>
+                    <button
+                      type="button"
+                      onClick={generateEditRandomPin}
+                      className="text-[11px] font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>New PIN</span>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    pattern="[0-9]{4}"
+                    placeholder="4-digit PIN (e.g. 5678)"
+                    value={editStaffPin}
+                    onChange={(e) => setEditStaffPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-mono font-bold tracking-widest text-center text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Phone / WhatsApp (Optional)</label>
+                  <input
+                    type="tel"
+                    placeholder="e.g. +91 98765 43210"
+                    value={editStaffPhone}
+                    onChange={(e) => setEditStaffPhone(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-medium focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Online Access Toggle */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-emerald-600" />
+                    <span>Staff Online Login Access (इनेबल ऑनलाइन)</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500">When disabled, this staff member cannot log in with their PIN.</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={editStaffIsActive}
+                  onChange={(e) => setEditStaffIsActive(e.target.checked)}
+                  className="w-5 h-5 accent-emerald-600 cursor-pointer"
+                />
+              </div>
+
+              {/* Granular Permissions (हाथ में क्या-क्या देना है) */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  Granular Delegated Rights (स्टाफ़ के हाथ में क्या-क्या देना है):
+                </label>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>🍳 Orders / Kitchen KDS Status</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Advance order from Pending → Preparing → Ready → Served.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editStaffOrders}
+                      onChange={(e) => setEditStaffOrders(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>📋 Menu Catalog &amp; Daily Stock Control</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Toggle dish availability &amp; set daily remaining portions.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editStaffMenu}
+                      onChange={(e) => setEditStaffMenu(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>💳 Billing &amp; Payment Clearance</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Mark orders as Paid / Unpaid and print KOT receipts.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editStaffBilling}
+                      onChange={(e) => setEditStaffBilling(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+
+                  <div className="border-t border-slate-200 my-1.5" />
+
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                        <span>🔔 Dining Table Service Calls</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">Receive and attend Water, Cleaning, Waiter, and Bill calls.</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={editStaffRequests}
+                      onChange={(e) => setEditStaffRequests(e.target.checked)}
+                      className="w-4 h-4 accent-orange-600 cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStaff(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEditStaff}
+                  className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-md shadow-orange-600/20 disabled:opacity-50"
+                >
+                  {isSavingEditStaff ? "Saving Changes..." : "Update Staff Member"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: ADJUST DISH PORTION STOCK ===================== */}
+      {editingStockDish && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                  <Boxes className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">Adjust Daily Stock Portions</h3>
+                  <p className="text-[11px] text-slate-400">Manage portions prepared for today for {editingStockDish.name}.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingStockDish(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveStock} className="space-y-4 text-xs">
+              {/* Dish Info Box */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3">
+                <img
+                  src={editingStockDish.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80"}
+                  alt={editingStockDish.name}
+                  className="w-12 h-12 rounded-xl object-cover bg-slate-200 shrink-0"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 text-sm">{editingStockDish.name}</div>
+                  <div className="text-[11px] text-slate-500">
+                    {restaurant.currencySymbol}{editingStockDish.price} • {editingStockDish.isVeg ? "🟢 Veg" : "🔴 Non-Veg"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1.5">Quick Portion Presets</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = stockPortionInput === "" || Number(stockPortionInput) < 0 ? 0 : Number(stockPortionInput);
+                      setStockPortionInput((cur + 10).toString());
+                    }}
+                    className="py-2 px-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-800 transition"
+                  >
+                    +10
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = stockPortionInput === "" || Number(stockPortionInput) < 0 ? 0 : Number(stockPortionInput);
+                      setStockPortionInput((cur + 25).toString());
+                    }}
+                    className="py-2 px-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-800 transition"
+                  >
+                    +25
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = stockPortionInput === "" || Number(stockPortionInput) < 0 ? 0 : Number(stockPortionInput);
+                      setStockPortionInput((cur + 50).toString());
+                    }}
+                    className="py-2 px-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-800 transition"
+                  >
+                    +50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStockPortionInput("-1")}
+                    className="py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl font-bold transition border border-emerald-200"
+                    title="Unlimited Portions"
+                  >
+                    ♾️ Unlim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStockPortionInput("0")}
+                    className="py-2 px-2 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded-xl font-bold transition border border-rose-200"
+                    title="Mark Sold Out"
+                  >
+                    🔴 0 (Sold)
+                  </button>
+                </div>
+              </div>
+
+              {/* Exact Inputs */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Portions Available (संख्या)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="-1 for unlimited"
+                    value={stockPortionInput}
+                    onChange={(e) => setStockPortionInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">-1 = Unlimited portions</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Low Stock Threshold
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="5"
+                    value={stockThresholdInput}
+                    onChange={(e) => setStockThresholdInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Alerts kitchen when &le; this count</p>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStockDish(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingStock}
+                  className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-md shadow-orange-600/20 disabled:opacity-50"
+                >
+                  {isSavingStock ? "Saving..." : "Save Stock Count"}
                 </button>
               </div>
             </form>

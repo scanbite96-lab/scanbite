@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceRequests, createServiceRequest, attendServiceRequest } from "@/lib/store";
+import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -31,6 +32,16 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const session = getSessionUser(request);
+    const isSuperAdmin = isSuperAdminRequest(request);
+
+    if (session?.role === "staff" && !session.permissions?.canManageRequests) {
+      return NextResponse.json(
+        { error: "Forbidden: You do not have permission to attend dining table requests." },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { requestId } = body;
 
