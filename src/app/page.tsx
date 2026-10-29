@@ -43,13 +43,6 @@ export default function SaaSPlatformHome() {
 
           <div className="flex items-center gap-3">
             <Link
-              href="/admin"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/60 hover:bg-amber-900/60 text-[11px] font-black text-amber-300 border border-amber-500/40 transition shadow-sm"
-              title="Platform Owner Command Center"
-            >
-              <span>👑 Super Admin</span>
-            </Link>
-            <Link
               href="/register"
               className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/30 transition active:scale-95"
             >
