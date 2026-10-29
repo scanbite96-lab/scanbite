@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRestaurantBySlug } from "@/lib/store";
 import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
+import { DEMO_RESTAURANT } from "@/lib/demoData";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,9 +15,14 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
       }
 
-      const platformSetting = await prisma.platformSetting.findUnique({
-        where: { id: "global" },
-      });
+      let platformSetting = null;
+      try {
+        platformSetting = await prisma.platformSetting.findUnique({
+          where: { id: "global" },
+        });
+      } catch {
+        // ignore
+      }
 
       return NextResponse.json({
         ...restaurant,
@@ -29,12 +35,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const restaurants = await prisma.restaurant.findMany({
-      include: {
-        categories: true,
-        tables: true,
-      },
-    });
+    let restaurants: any[] = [];
+    try {
+      restaurants = await prisma.restaurant.findMany({
+        include: {
+          categories: true,
+          tables: true,
+        },
+      });
+    } catch (err) {
+      console.warn("prisma.restaurant.findMany error, using fallback demo restaurant:", err);
+    }
+
+    if (!restaurants || restaurants.length === 0) {
+      return NextResponse.json([DEMO_RESTAURANT]);
+    }
 
     // Strip sensitive passwords & staff pins from public restaurant list
     const safeRestaurants = restaurants.map((r) => {
@@ -45,7 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(safeRestaurants);
   } catch (err) {
     console.error("GET /api/restaurants error:", err);
-    return NextResponse.json({ error: "Failed to fetch restaurants" }, { status: 500 });
+    return NextResponse.json([DEMO_RESTAURANT]);
   }
 }
 

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { Restaurant, MenuItem, Order, OrderItem } from "@/types";
+import { DEMO_RESTAURANT } from "@/lib/demoData";
 import { translations, Language } from "@/lib/translations";
 import { 
   Search, 
@@ -82,11 +83,19 @@ export default function CustomerTableMenu() {
     async function fetchRestaurant() {
       try {
         const res = await fetch(`/api/restaurants?slug=${slug}`);
-        if (!res.ok) throw new Error("Restaurant not found");
+        if (!res.ok) {
+          if (slug === "grand-spice") {
+            setRestaurant(DEMO_RESTAURANT);
+            return;
+          }
+          throw new Error("Restaurant not found");
+        }
         const data = await res.json();
         setRestaurant(data);
       } catch (err: unknown) {
-        if (err instanceof Error) {
+        if (slug === "grand-spice") {
+          setRestaurant(DEMO_RESTAURANT);
+        } else if (err instanceof Error) {
           setError(err.message);
         } else {
           setError("Failed to load restaurant menu");

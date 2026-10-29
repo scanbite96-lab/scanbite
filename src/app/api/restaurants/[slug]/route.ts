@@ -7,24 +7,34 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { slug: string } }
 ) {
-  const restaurant = await getRestaurantBySlug(params.slug);
-  if (!restaurant) {
-    return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
+  try {
+    const restaurant = await getRestaurantBySlug(params.slug);
+    if (!restaurant) {
+      return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
+    }
+
+    let platformSetting = null;
+    try {
+      platformSetting = await prisma.platformSetting.findUnique({
+        where: { id: "global" },
+      });
+    } catch {
+      // ignore
+    }
+
+    return NextResponse.json({
+      ...restaurant,
+      platformSetting: platformSetting || {
+        id: "global",
+        broadcastMessage: null,
+        isMaintenance: false,
+        supportPhone: "+91 98765 43210",
+      },
+    });
+  } catch (err) {
+    console.error("GET /api/restaurants/[slug] error:", err);
+    return NextResponse.json({ error: "Failed to fetch restaurant" }, { status: 500 });
   }
-
-  const platformSetting = await prisma.platformSetting.findUnique({
-    where: { id: "global" },
-  });
-
-  return NextResponse.json({
-    ...restaurant,
-    platformSetting: platformSetting || {
-      id: "global",
-      broadcastMessage: null,
-      isMaintenance: false,
-      supportPhone: "+91 98765 43210",
-    },
-  });
 }
 
 export async function PATCH(

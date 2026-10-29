@@ -11,6 +11,7 @@ import {
   AuthUser,
   Staff
 } from "@/types";
+import { DEMO_RESTAURANT } from "@/lib/demoData";
 import { 
   ChefHat, 
   QrCode, 
@@ -486,9 +487,21 @@ export default function RestaurantDashboard() {
   const loadDashboardData = async () => {
     if (!authUser) return;
     try {
-      const restRes = await fetch(`/api/restaurants/${restaurantSlug}`);
-      if (restRes.ok) {
-        const restData: Restaurant = await restRes.json();
+      let restData: Restaurant | null = null;
+      try {
+        const restRes = await fetch(`/api/restaurants/${restaurantSlug}`);
+        if (restRes.ok) {
+          restData = await restRes.json();
+        }
+      } catch {
+        // ignore
+      }
+
+      if (!restData && (restaurantSlug === "grand-spice" || isDemoMode)) {
+        restData = DEMO_RESTAURANT;
+      }
+
+      if (restData) {
         setRestaurant(restData);
 
         // Auto sync form fields when switching restaurant or on initial load
@@ -503,40 +516,54 @@ export default function RestaurantDashboard() {
         }
 
         // Fetch Orders
-        const ordRes = await fetch(`/api/orders?restaurantId=${restData.id}`);
-        if (ordRes.ok) {
-          const ordData: Order[] = await ordRes.json();
-          
-          if (prevOrdersCountRef.current > 0 && ordData.length > prevOrdersCountRef.current) {
-            playNewOrderChime();
+        try {
+          const ordRes = await fetch(`/api/orders?restaurantId=${restData.id}`);
+          if (ordRes.ok) {
+            const ordData: Order[] = await ordRes.json();
+            
+            if (prevOrdersCountRef.current > 0 && ordData.length > prevOrdersCountRef.current) {
+              playNewOrderChime();
+            }
+            prevOrdersCountRef.current = ordData.length;
+            setOrders(ordData);
           }
-          prevOrdersCountRef.current = ordData.length;
-          setOrders(ordData);
+        } catch {
+          // ignore
         }
 
         // Fetch Service Requests
-        const reqRes = await fetch(`/api/service-requests?restaurantId=${restData.id}`);
-        if (reqRes.ok) {
-          const reqData: ServiceRequest[] = await reqRes.json();
-          const pendingCount = reqData.filter((r) => r.status === "pending").length;
-          if (prevRequestsCountRef.current > 0 && pendingCount > prevRequestsCountRef.current) {
-            playServiceChime();
+        try {
+          const reqRes = await fetch(`/api/service-requests?restaurantId=${restData.id}`);
+          if (reqRes.ok) {
+            const reqData: ServiceRequest[] = await reqRes.json();
+            const pendingCount = reqData.filter((r) => r.status === "pending").length;
+            if (prevRequestsCountRef.current > 0 && pendingCount > prevRequestsCountRef.current) {
+              playServiceChime();
+            }
+            prevRequestsCountRef.current = pendingCount;
+            setServiceRequests(reqData);
           }
-          prevRequestsCountRef.current = pendingCount;
-          setServiceRequests(reqData);
+        } catch {
+          // ignore
         }
 
         // Fetch Staff Directory if Owner
         if (authUser?.role === "owner") {
-          const stRes = await fetch(`/api/staff?restaurantId=${restData.id}`);
-          if (stRes.ok) {
-            const stData = await stRes.json();
-            setStaffList(stData.staff || []);
+          try {
+            const stRes = await fetch(`/api/staff?restaurantId=${restData.id}`);
+            if (stRes.ok) {
+              const stData = await stRes.json();
+              setStaffList(stData.staff || []);
+            }
+          } catch {
+            // ignore
           }
         }
       }
     } catch {
-      // ignore
+      if (restaurantSlug === "grand-spice" || isDemoMode) {
+        setRestaurant(DEMO_RESTAURANT);
+      }
     } finally {
       setLoading(false);
     }

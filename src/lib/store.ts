@@ -1,5 +1,15 @@
 import { prisma } from "./prisma";
 import { Restaurant, Order, ServiceRequest, MenuItem, OrderStatus } from "@/types";
+import {
+  DEMO_RESTAURANT,
+  getDemoOrders,
+  getDemoTableOrders,
+  addDemoOrder,
+  updateDemoOrderStatus,
+  demoServiceRequestsStore,
+  addDemoServiceRequest,
+  attendDemoServiceRequest,
+} from "./demoData";
 
 export const getRestaurantBySlug = async (slug: string): Promise<Restaurant | null> => {
   try {
@@ -11,14 +21,20 @@ export const getRestaurantBySlug = async (slug: string): Promise<Restaurant | nu
         tables: true,
       },
     });
-    if (!rest) return null;
-    // Omit sensitive credentials from public output
-    const { password, staffPin, ...safeRest } = rest as Record<string, unknown>;
-    return safeRest as unknown as Restaurant;
+    if (rest) {
+      // Omit sensitive credentials from public output
+      const { password, staffPin, ...safeRest } = rest as Record<string, unknown>;
+      return safeRest as unknown as Restaurant;
+    }
   } catch (err) {
     console.error("Prisma getRestaurantBySlug error:", err);
-    return null;
   }
+
+  // Bulletproof fallback for demo restaurant on serverless / read-only Vercel
+  if (slug === "grand-spice") {
+    return DEMO_RESTAURANT;
+  }
+  return null;
 };
 
 export const getOrdersForRestaurant = async (restaurantId: string): Promise<Order[]> => {
@@ -28,28 +44,34 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
-    return orders.map((o) => ({
-      ...o,
-      status: o.status as OrderStatus,
-      rating: o.rating ?? undefined,
-      reviewFeedback: o.reviewFeedback ?? undefined,
-      discount: o.discount ?? 0,
-      couponCode: o.couponCode ?? undefined,
-      items: o.items.map((it) => ({
-        menuItemId: it.menuItemId,
-        name: it.name,
-        price: it.price,
-        quantity: it.quantity,
-        isVeg: it.isVeg,
-        notes: it.notes,
-      })),
-      createdAt: o.createdAt.toISOString(),
-      updatedAt: o.updatedAt.toISOString(),
-    }));
+    if (orders && orders.length > 0) {
+      return orders.map((o) => ({
+        ...o,
+        status: o.status as OrderStatus,
+        rating: o.rating ?? undefined,
+        reviewFeedback: o.reviewFeedback ?? undefined,
+        discount: o.discount ?? 0,
+        couponCode: o.couponCode ?? undefined,
+        items: o.items.map((it) => ({
+          menuItemId: it.menuItemId,
+          name: it.name,
+          price: it.price,
+          quantity: it.quantity,
+          isVeg: it.isVeg,
+          notes: it.notes,
+        })),
+        createdAt: o.createdAt.toISOString(),
+        updatedAt: o.updatedAt.toISOString(),
+      }));
+    }
   } catch (err) {
     console.error("Prisma getOrders error:", err);
-    return [];
   }
+
+  if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+    return getDemoOrders();
+  }
+  return [];
 };
 
 export const getTableOrders = async (restaurantId: string, tableId: string): Promise<Order[]> => {
@@ -81,28 +103,34 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
-    return orders.map((o) => ({
-      ...o,
-      status: o.status as OrderStatus,
-      rating: o.rating ?? undefined,
-      reviewFeedback: o.reviewFeedback ?? undefined,
-      discount: o.discount ?? 0,
-      couponCode: o.couponCode ?? undefined,
-      items: o.items.map((it) => ({
-        menuItemId: it.menuItemId,
-        name: it.name,
-        price: it.price,
-        quantity: it.quantity,
-        isVeg: it.isVeg,
-        notes: it.notes,
-      })),
-      createdAt: o.createdAt.toISOString(),
-      updatedAt: o.updatedAt.toISOString(),
-    }));
+    if (orders && orders.length > 0) {
+      return orders.map((o) => ({
+        ...o,
+        status: o.status as OrderStatus,
+        rating: o.rating ?? undefined,
+        reviewFeedback: o.reviewFeedback ?? undefined,
+        discount: o.discount ?? 0,
+        couponCode: o.couponCode ?? undefined,
+        items: o.items.map((it) => ({
+          menuItemId: it.menuItemId,
+          name: it.name,
+          price: it.price,
+          quantity: it.quantity,
+          isVeg: it.isVeg,
+          notes: it.notes,
+        })),
+        createdAt: o.createdAt.toISOString(),
+        updatedAt: o.updatedAt.toISOString(),
+      }));
+    }
   } catch (err) {
     console.error("Prisma getTableOrders error:", err);
-    return [];
   }
+
+  if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+    return getDemoTableOrders(tableId);
+  }
+  return [];
 };
 
 export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order | null> => {
@@ -210,6 +238,28 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
     };
   } catch (err) {
     console.error("Prisma createOrder error:", err);
+    if (orderData.restaurantId === "rest-001" || orderData.restaurantId === "grand-spice") {
+      const newDemoOrder: Order = {
+        id: `ord-${Date.now()}`,
+        restaurantId: "rest-001",
+        tableId: orderData.tableId || "tbl-4",
+        tableNumber: orderData.tableNumber || "Table 4",
+        customerName: orderData.customerName,
+        customerPhone: orderData.customerPhone,
+        subtotal: orderData.subtotal,
+        tax: orderData.tax,
+        discount: orderData.discount || 0,
+        couponCode: orderData.couponCode || undefined,
+        total: orderData.total,
+        status: orderData.status || "pending",
+        paymentMethod: orderData.paymentMethod || "counter_cash",
+        paymentStatus: orderData.paymentStatus || "unpaid",
+        items: orderData.items,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      return addDemoOrder(newDemoOrder);
+    }
     return null;
   }
 };
@@ -249,6 +299,8 @@ export const updateOrderStatus = async (
     };
   } catch (err) {
     console.error("Prisma updateOrderStatus error:", err);
+    const demoUpdated = updateDemoOrderStatus(orderId, status, paymentStatus);
+    if (demoUpdated) return demoUpdated;
     return null;
   }
 };
@@ -320,6 +372,18 @@ export const createServiceRequest = async (
     };
   } catch (err) {
     console.error("Prisma createServiceRequest error:", err);
+    if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+      const demoReq: ServiceRequest = {
+        id: `req-${Date.now()}`,
+        restaurantId: "rest-001",
+        tableId,
+        tableNumber,
+        type,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      return addDemoServiceRequest(demoReq);
+    }
     return null;
   }
 };
@@ -330,16 +394,22 @@ export const getServiceRequests = async (restaurantId: string): Promise<ServiceR
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
     });
-    return requests.map((r) => ({
-      ...r,
-      type: r.type as ServiceRequest["type"],
-      status: r.status as ServiceRequest["status"],
-      createdAt: r.createdAt.toISOString(),
-    }));
+    if (requests && requests.length > 0) {
+      return requests.map((r) => ({
+        ...r,
+        type: r.type as ServiceRequest["type"],
+        status: r.status as ServiceRequest["status"],
+        createdAt: r.createdAt.toISOString(),
+      }));
+    }
   } catch (err) {
     console.error("Prisma getServiceRequests error:", err);
-    return [];
   }
+
+  if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+    return [...demoServiceRequestsStore];
+  }
+  return [];
 };
 
 export const attendServiceRequest = async (requestId: string): Promise<boolean> => {
@@ -351,7 +421,7 @@ export const attendServiceRequest = async (requestId: string): Promise<boolean> 
     return true;
   } catch (err) {
     console.error("Prisma attendServiceRequest error:", err);
-    return false;
+    return attendDemoServiceRequest(requestId);
   }
 };
 
