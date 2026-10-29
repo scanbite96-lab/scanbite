@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
 import Link from "next/link";
 import { 
@@ -22,6 +24,10 @@ export default function RegisterRestaurantPage() {
 
   // Form Fields
   const [name, setName] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [staffPin, setStaffPin] = useState("1234");
   const [tagline, setTagline] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -45,6 +51,10 @@ export default function RegisterRestaurantPage() {
         body: JSON.stringify({
           name,
           slug,
+          ownerName: ownerName || "Owner",
+          ownerEmail: ownerEmail || null,
+          password: password || "admin123",
+          staffPin: staffPin || "1234",
           tagline: tagline || "Authentic Taste, Fast Service",
           phone: phone || "+91 99999 00000",
           address: address || "City Center",
@@ -53,14 +63,19 @@ export default function RegisterRestaurantPage() {
         }),
       });
 
-      if (res.ok) {
-        setCreatedSlug(slug);
-        setStep(2);
-      } else {
-        // If API is already ready or in fallback, still proceed
-        setCreatedSlug(slug);
-        setStep(2);
-      }
+      // Auto login
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          identifier: ownerEmail || slug,
+          password: password || "admin123",
+        }),
+      });
+
+      setCreatedSlug(slug);
+      setStep(2);
     } catch {
       setCreatedSlug(slug);
       setStep(2);
@@ -126,6 +141,68 @@ export default function RegisterRestaurantPage() {
                   onChange={(e) => setTagline(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
                 />
+              </div>
+
+              {/* Security & Login Credentials */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                  🔐 Dashboard Security & Login Credentials
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">
+                      Owner Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Rajesh Sharma"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">
+                      Owner Login Email
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="owner@mycafe.com"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">
+                      Dashboard Password
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="Default: admin123"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1">
+                      Staff Quick PIN (4-Digits)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      placeholder="Default: 1234"
+                      value={staffPin}
+                      onChange={(e) => setStaffPin(e.target.value.replace(/[^0-9]/g, ""))}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none font-mono"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -220,6 +297,14 @@ export default function RegisterRestaurantPage() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Starter Menu:</span>
                 <span className="font-bold text-emerald-400">Pre-loaded & Ready to edit</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Owner Login:</span>
+                <span className="font-bold text-white">{ownerEmail || createdSlug}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Staff Quick PIN:</span>
+                <span className="font-mono font-bold text-amber-400">{staffPin || "1234"}</span>
               </div>
             </div>
 

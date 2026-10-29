@@ -10,7 +10,20 @@ export async function GET(
   if (!restaurant) {
     return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
   }
-  return NextResponse.json(restaurant);
+
+  const platformSetting = await prisma.platformSetting.findUnique({
+    where: { id: "global" },
+  });
+
+  return NextResponse.json({
+    ...restaurant,
+    platformSetting: platformSetting || {
+      id: "global",
+      broadcastMessage: null,
+      isMaintenance: false,
+      supportPhone: "+91 98765 43210",
+    },
+  });
 }
 
 export async function PATCH(

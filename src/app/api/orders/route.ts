@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus } from "@/lib/store";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -39,6 +40,18 @@ export async function POST(request: NextRequest) {
 
     if (!restaurantId || !tableId || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid order data: items, restaurantId and tableId are required" }, { status: 400 });
+    }
+
+    // Verify restaurant is active (Super Admin suspension check)
+    const rest = await prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { isActive: true, name: true },
+    });
+    if (!rest || !rest.isActive) {
+      return NextResponse.json(
+        { error: "This restaurant is currently suspended or inactive. Orders cannot be accepted." },
+        { status: 403 }
+      );
     }
 
     // Defensive item sanitization

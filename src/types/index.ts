@@ -71,6 +71,14 @@ export type ServiceRequest = {
   createdAt: string;
 };
 
+export type PlatformSetting = {
+  id: string;
+  broadcastMessage?: string | null;
+  isMaintenance: boolean;
+  supportPhone?: string | null;
+  updatedAt?: string;
+};
+
 export type Restaurant = {
   id: string;
   name: string;
@@ -92,6 +100,16 @@ export type Restaurant = {
   categories: DishCategory[];
   menuItems: MenuItem[];
   tables: Table[];
+  platformSetting?: PlatformSetting | null;
+};
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  slug: string;
+  ownerEmail?: string | null;
+  ownerName?: string | null;
+  role: "owner" | "staff" | "admin";
 };
 
 export type SuperAdminMetrics = {

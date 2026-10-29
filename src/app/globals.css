@@ -45,7 +45,8 @@ body {
     visibility: hidden;
   }
   #printable-qr-grid, #printable-qr-grid *,
-  #printable-kot-slip, #printable-kot-slip * {
+  #printable-kot-slip, #printable-kot-slip *,
+  #printable-single-qr, #printable-single-qr * {
     visibility: visible;
   }
   #printable-qr-grid {
@@ -59,9 +60,9 @@ body {
     padding: 1rem !important;
   }
   #printable-kot-slip {
-    position: absolute;
-    left: 0;
-    top: 0;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
     width: 80mm !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -69,6 +70,14 @@ body {
     font-size: 11px !important;
     background: #ffffff !important;
     color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .print-modal-container {
+    background: transparent !important;
+    filter: none !important;
+    backdrop-filter: none !important;
+    transform: none !important;
   }
   .no-print {
     display: none !important;

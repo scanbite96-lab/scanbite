@@ -59,19 +59,21 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
         OR: [
           { id: tableId },
           { tableNumber: tableId },
-          ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }, { tableNumber: { contains: cleanNum } }] : []),
+          ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }] : []),
         ],
       },
     });
+
+    const targetTableId = matchingTable ? matchingTable.id : tableId;
+    const targetTableNumber = matchingTable ? matchingTable.tableNumber : (cleanNum ? `Table ${cleanNum}` : tableId);
 
     const orders = await prisma.order.findMany({
       where: {
         restaurantId,
         OR: [
+          { tableId: targetTableId },
+          { tableNumber: targetTableNumber },
           { tableId },
-          { tableNumber: tableId },
-          ...(matchingTable ? [{ tableId: matchingTable.id }, { tableNumber: matchingTable.tableNumber }] : []),
-          ...(cleanNum ? [{ tableNumber: { contains: cleanNum } }] : []),
         ],
       },
       include: { items: true },
@@ -106,17 +108,17 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
     let validTableId = orderData.tableId;
     const tableExists = await prisma.table.findUnique({ where: { id: validTableId } });
     if (!tableExists) {
-      const matchingTable = (await prisma.table.findFirst({
+      const cleanNum = orderData.tableNumber ? orderData.tableNumber.replace(/\D/g, "") : "";
+      const matchingTable = await prisma.table.findFirst({
         where: {
           restaurantId: orderData.restaurantId,
           OR: [
-            { tableNumber: { contains: orderData.tableNumber } },
-            { id: { contains: orderData.tableId } },
+            { tableNumber: orderData.tableNumber },
+            ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }] : []),
+            { id: orderData.tableId },
           ],
         },
-      })) || (await prisma.table.findFirst({
-        where: { restaurantId: orderData.restaurantId },
-      }));
+      });
 
       if (matchingTable) {
         validTableId = matchingTable.id;
@@ -124,7 +126,7 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
         const createdTbl = await prisma.table.create({
           data: {
             restaurantId: orderData.restaurantId,
-            tableNumber: orderData.tableNumber || "Table 1",
+            tableNumber: orderData.tableNumber || (cleanNum ? `Table ${cleanNum}` : "Table 1"),
             seats: 4,
           },
         });
@@ -250,10 +252,28 @@ export const createServiceRequest = async (
     let validTableId = tableId;
     const tableExists = await prisma.table.findUnique({ where: { id: validTableId } });
     if (!tableExists) {
+      const cleanNum = tableNumber ? tableNumber.replace(/\D/g, "") : "";
       const matchingTable = await prisma.table.findFirst({
-        where: { restaurantId },
+        where: {
+          restaurantId,
+          OR: [
+            { tableNumber },
+            ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }] : []),
+          ],
+        },
       });
-      if (matchingTable) validTableId = matchingTable.id;
+      if (matchingTable) {
+        validTableId = matchingTable.id;
+      } else {
+        const createdTbl = await prisma.table.create({
+          data: {
+            restaurantId,
+            tableNumber: tableNumber || (cleanNum ? `Table ${cleanNum}` : "Table 1"),
+            seats: 4,
+          },
+        });
+        validTableId = createdTbl.id;
+      }
     }
 
     const req = await prisma.serviceRequest.create({
@@ -352,7 +372,9 @@ export const getSuperAdminOverview = async () => {
     };
 
     const restaurantRows = restaurants.map((r) => {
-      const gmv = r.orders.reduce((sum, o) => sum + (o.total || 0), 0);
+      const gmv = r.orders
+        .filter((o) => o.status !== "cancelled")
+        .reduce((sum, o) => sum + (o.total || 0), 0);
       totalPlatformGmv += gmv;
       totalOrders += r._count.orders;
       totalTables += r._count.tables;
@@ -373,6 +395,8 @@ export const getSuperAdminOverview = async () => {
         city: r.city || "Delhi NCR",
         ownerName: r.ownerName || "Partner",
         ownerEmail: r.ownerEmail,
+        password: r.password || "admin123",
+        staffPin: r.staffPin || "1234",
         plan: r.plan || "starter",
         planExpiresAt: r.planExpiresAt ? r.planExpiresAt.toISOString() : null,
         isActive: r.isActive,
@@ -425,8 +449,12 @@ export const updateSuperAdminRestaurant = async (
     plan?: string;
     city?: string;
     ownerName?: string;
+    ownerEmail?: string;
     phone?: string;
+    password?: string;
+    staffPin?: string;
     daysToAdd?: number;
+    clearExpiry?: boolean;
   }
 ) => {
   try {
@@ -435,9 +463,14 @@ export const updateSuperAdminRestaurant = async (
     if (data.plan !== undefined) updatePayload.plan = data.plan;
     if (data.city !== undefined) updatePayload.city = data.city;
     if (data.ownerName !== undefined) updatePayload.ownerName = data.ownerName;
+    if (data.ownerEmail !== undefined) updatePayload.ownerEmail = data.ownerEmail.trim().toLowerCase();
     if (data.phone !== undefined) updatePayload.phone = data.phone;
+    if (data.password !== undefined && data.password.trim()) updatePayload.password = data.password.trim();
+    if (data.staffPin !== undefined && data.staffPin.trim()) updatePayload.staffPin = data.staffPin.trim();
 
-    if (data.daysToAdd) {
+    if (data.clearExpiry) {
+      updatePayload.planExpiresAt = null;
+    } else if (data.daysToAdd !== undefined && data.daysToAdd > 0) {
       const current = await prisma.restaurant.findUnique({ where: { id: restaurantId } });
       const baseDate = current?.planExpiresAt && current.planExpiresAt > new Date()
         ? current.planExpiresAt
@@ -459,9 +492,30 @@ export const updateSuperAdminRestaurant = async (
 
 export const deleteRestaurant = async (restaurantId: string) => {
   try {
-    await prisma.restaurant.delete({
-      where: { id: restaurantId },
-    });
+    // Safe cascading delete transaction for SQLite
+    await prisma.$transaction([
+      prisma.orderItem.deleteMany({
+        where: { order: { restaurantId } },
+      }),
+      prisma.order.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.serviceRequest.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.menuItem.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.category.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.table.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.restaurant.delete({
+        where: { id: restaurantId },
+      }),
+    ]);
     return true;
   } catch (err) {
     console.error("Prisma deleteRestaurant error:", err);

@@ -1,8 +1,10 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
-import QRCode from "qrcode";
+import Link from "next/link";
 import { Restaurant, MenuItem, Order, OrderItem } from "@/types";
 import { translations, Language } from "@/lib/translations";
 import { 
@@ -22,7 +24,8 @@ import {
   Star,
   Tag,
   CheckCircle2,
-  Languages
+  Languages,
+  MessageCircle
 } from "lucide-react";
 
 export default function CustomerTableMenu() {
@@ -48,6 +51,7 @@ export default function CustomerTableMenu() {
   const [cartLoaded, setCartLoaded] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isTablePickerOpen, setIsTablePickerOpen] = useState(false);
 
   // Promo Code State
   const [couponInput, setCouponInput] = useState("");
@@ -76,7 +80,7 @@ export default function CustomerTableMenu() {
   useEffect(() => {
     async function fetchRestaurant() {
       try {
-        const res = await fetch(`/api/restaurants/${slug}`);
+        const res = await fetch(`/api/restaurants?slug=${slug}`);
         if (!res.ok) throw new Error("Restaurant not found");
         const data = await res.json();
         setRestaurant(data);
@@ -97,22 +101,24 @@ export default function CustomerTableMenu() {
   const currentTable = useMemo(() => {
     if (!restaurant) return null;
     const cleanParam = tableParam.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const paramNum = tableParam.replace(/\D/g, "");
 
     const found = restaurant.tables.find((tbl) => {
       const cleanTblId = tbl.id.toLowerCase().replace(/[^a-z0-9]/g, "");
       const cleanTblNum = tbl.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const tblNum = tbl.tableNumber.replace(/\D/g, "");
+
       return (
         tbl.id === tableParam ||
         cleanTblId === cleanParam ||
         cleanTblNum === cleanParam ||
-        cleanTblNum.endsWith(cleanParam) ||
-        cleanParam.endsWith(cleanTblNum)
+        (paramNum !== "" && tblNum === paramNum)
       );
     });
 
     return found || restaurant.tables[0] || {
       id: tableParam,
-      tableNumber: `Table ${tableParam.replace(/\D/g, "") || "1"}`,
+      tableNumber: `Table ${paramNum || "1"}`,
       seats: 4,
     };
   }, [restaurant, tableParam]);
@@ -149,6 +155,9 @@ export default function CustomerTableMenu() {
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -178,14 +187,16 @@ export default function CustomerTableMenu() {
           const prev = previousStatusMap.current[ord.id];
           if (prev && prev !== ord.status) {
             if (ord.status === "cooking") {
-              showToast(`👨‍🍳 Chef has started cooking Order #${ord.id.slice(-4)}!`);
+              showToast(lang === "hi" ? `👨‍🍳 शेफ ने ऑर्डर #${ord.id.slice(-4)} बनाना शुरू कर दिया है!` : `👨‍🍳 Chef has started cooking Order #${ord.id.slice(-4)}!`);
             } else if (ord.status === "ready") {
               playCustomerAlertChime();
               if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([200, 100, 200]);
-              showToast(`🔔 Order #${ord.id.slice(-4)} is ready to serve!`);
+              showToast(lang === "hi" ? `🔔 ऑर्डर #${ord.id.slice(-4)} परोसने के लिए तैयार है!` : `🔔 Order #${ord.id.slice(-4)} is ready to serve!`);
             } else if (ord.status === "served") {
               playCustomerAlertChime();
-              showToast(`✅ Order #${ord.id.slice(-4)} served. Enjoy your meal!`);
+              showToast(lang === "hi" ? `✅ ऑर्डर #${ord.id.slice(-4)} टेबल पर परोस दिया गया है। भोजन का आनंद लें!` : `✅ Order #${ord.id.slice(-4)} served. Enjoy your meal!`);
+            } else if (ord.status === "cancelled") {
+              showToast(lang === "hi" ? `❌ ऑर्डर #${ord.id.slice(-4)} रद्द कर दिया गया है।` : `❌ Order #${ord.id.slice(-4)} was cancelled.`);
             }
           }
           previousStatusMap.current[ord.id] = ord.status;
@@ -220,7 +231,7 @@ export default function CustomerTableMenu() {
   }
 
   const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const taxRate = restaurant?.taxRatePercent || 5;
+  const taxRate = restaurant?.taxRatePercent !== undefined ? restaurant.taxRatePercent : 5;
   const taxAmount = Number(((taxableAmount * taxRate) / 100).toFixed(2));
   const grandTotal = Number((taxableAmount + taxAmount).toFixed(2));
 
@@ -238,12 +249,17 @@ export default function CustomerTableMenu() {
       setUpiQrDataUrl(null);
       return;
     }
-    QRCode.toDataURL(upiIntentUri, {
-      width: 260,
-      margin: 1,
-      color: { dark: "#0f172a", light: "#ffffff" },
-    })
-      .then((url) => setUpiQrDataUrl(url))
+    import("qrcode")
+      .then((mod) => {
+        const QRCode = mod.default || mod;
+        QRCode.toDataURL(upiIntentUri, {
+          width: 260,
+          margin: 1,
+          color: { dark: "#0f172a", light: "#ffffff" },
+        })
+          .then((url: string) => setUpiQrDataUrl(url))
+          .catch(() => setUpiQrDataUrl(null));
+      })
       .catch(() => setUpiQrDataUrl(null));
   }, [upiIntentUri]);
 
@@ -320,7 +336,7 @@ export default function CustomerTableMenu() {
       bill: lang === "hi" ? "🧾 बिल का अनुरोध काउंटर पर भेजा गया!" : "🧾 Bill request sent to counter!",
     };
     try {
-      await fetch("/api/service-requests", {
+      const res = await fetch("/api/service-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -330,9 +346,10 @@ export default function CustomerTableMenu() {
           type,
         }),
       });
+      if (!res.ok) throw new Error("Service request failed");
       showToast(labels[type]);
     } catch {
-      showToast("Request failed. Please notify a waiter directly.");
+      showToast(lang === "hi" ? "अनुरोध भेजने में समस्या हुई। कृपया वेटर को सीधे बताएं।" : "Request failed. Please notify a waiter directly.");
     }
   };
 
@@ -362,8 +379,8 @@ export default function CustomerTableMenu() {
           restaurantId: restaurant.id,
           tableId: currentTable.id,
           tableNumber: currentTable.tableNumber,
-          customerName,
-          customerPhone,
+          customerName: customerName.trim() || undefined,
+          customerPhone: customerPhone.trim() || undefined,
           items: orderPayloadItems,
           subtotal,
           tax: taxAmount,
@@ -386,9 +403,9 @@ export default function CustomerTableMenu() {
       setIsCartOpen(false);
       fetchOrders();
       setIsOrdersOpen(true);
-      showToast(`🎉 Order #${order.id.slice(-4)} sent to the kitchen!`);
+      showToast(lang === "hi" ? `🎉 ऑर्डर #${order.id.slice(-4)} रसोई में भेज दिया गया!` : `🎉 Order #${order.id.slice(-4)} sent to the kitchen!`);
     } catch {
-      alert("Failed to submit order. Please try again.");
+      showToast(lang === "hi" ? "ऑर्डर सबमिट करने में विफल। कृपया पुनः प्रयास करें।" : "Failed to submit order. Please try again.");
     } finally {
       setIsPlacingOrder(false);
     }
@@ -398,36 +415,40 @@ export default function CustomerTableMenu() {
   const generateWhatsAppBillUri = (ord: Order) => {
     if (!restaurant) return "#";
     const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
-    const itemsList = ord.items.map((it) => `• ${it.quantity}x ${it.name} (${restaurant.currencySymbol}${it.price * it.quantity})`).join("%0A");
-    const discountText = ord.discount && ord.discount > 0 ? `%0A🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
-    const text = `🍽️ *${encodeURIComponent(restaurant.name)}*%0A` +
-      `📍 Table: ${encodeURIComponent(ord.tableNumber)}%0A` +
-      `🧾 Order: %23${ord.id.slice(-4)}%0A` +
-      `━━━━━━━━━━━━━━━━%0A` +
-      `${itemsList}%0A` +
-      `━━━━━━━━━━━━━━━━%0A` +
-      `Subtotal: ${restaurant.currencySymbol}${ord.subtotal}%0A` +
+    const itemsList = ord.items.map((it) => `• ${it.quantity}x ${it.name} (${restaurant.currencySymbol}${it.price * it.quantity})`).join("\n");
+    const discountText = ord.discount && ord.discount > 0 ? `\n🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
+    const text = `🍽️ *${restaurant.name}*\n` +
+      `📍 Table: ${ord.tableNumber}\n` +
+      `🧾 Order: #${ord.id.slice(-4)}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `${itemsList}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Subtotal: ${restaurant.currencySymbol}${ord.subtotal}\n` +
       `Taxes (GST ${restaurant.taxRatePercent}%): ${restaurant.currencySymbol}${ord.tax}` +
-      `${discountText}%0A` +
-      `*Grand Total: ${restaurant.currencySymbol}${ord.total}*%0A` +
-      `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})%0A` +
-      (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}%0A` : "") +
-      `%0AThank you for dining with us! 🙏`;
+      `${discountText}\n` +
+      `*Grand Total: ${restaurant.currencySymbol}${ord.total}*\n` +
+      `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})\n` +
+      (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}\n` : "") +
+      `\nThank you for dining with us! 🙏`;
 
-    return phone ? `https://wa.me/91${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    return phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
 
   // Submit Star Rating
   const handleRatingSubmit = async (orderId: string, rating: number) => {
     setRatingsMap((prev) => ({ ...prev, [orderId]: rating }));
     try {
-      await fetch("/api/orders/feedback", {
+      const res = await fetch("/api/orders/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, rating }),
       });
+      if (!res.ok) throw new Error("Rating submit failed");
       setSubmittedRatingMap((prev) => ({ ...prev, [orderId]: true }));
-      showToast(rating >= 4 ? "⭐ Thank you! We'd love your Google review!" : "🙏 Thank you for your feedback!");
+      const msg = rating >= 4
+        ? (lang === "hi" ? "⭐ धन्यवाद! हमें Google पर रिव्यू ज़रूर दें!" : "⭐ Thank you! We'd love your Google review!")
+        : (lang === "hi" ? "🙏 आपकी प्रतिक्रिया के लिए धन्यवाद!" : "🙏 Thank you for your feedback!");
+      showToast(msg);
     } catch {
       // ignore
     }
@@ -486,12 +507,34 @@ export default function CustomerTableMenu() {
         <p className="text-slate-500 text-sm max-w-sm mb-6">
           {error || "Could not find menu for this QR code. Please ask the waiter for assistance."}
         </p>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-md transition"
+        >
+          <span>Return to ScanBite Home</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
+      {/* Platform Live Broadcast Notice */}
+      {restaurant.platformSetting?.broadcastMessage && (
+        <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white px-4 py-2 text-xs font-semibold flex items-center justify-center gap-2 shadow-sm text-center">
+          <Sparkles className="w-3.5 h-3.5 flex-shrink-0 animate-pulse" />
+          <span>{restaurant.platformSetting.broadcastMessage}</span>
+        </div>
+      )}
+
+      {/* Platform Maintenance Mode Alert */}
+      {restaurant.platformSetting?.isMaintenance && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm text-center">
+          <span>🛠️ System Maintenance in progress. Offline table service active.</span>
+        </div>
+      )}
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs sm:text-sm font-semibold animate-bounce max-w-[90vw] text-center border border-slate-700">
@@ -506,9 +549,14 @@ export default function CustomerTableMenu() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md">
-                  {currentTable?.tableNumber}
-                </span>
+                <button
+                  onClick={() => setIsTablePickerOpen(true)}
+                  className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded-md flex items-center gap-1 transition"
+                  title="Switch Table"
+                >
+                  <span>{currentTable?.tableNumber}</span>
+                  <span className="text-[9px] text-orange-400">▼</span>
+                </button>
               </div>
               <h1 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h1>
               <p className="text-xs text-slate-500 line-clamp-1">{restaurant.tagline}</p>
@@ -646,6 +694,9 @@ export default function CustomerTableMenu() {
                     alt={item.name}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80";
+                    }}
                   />
                   {!item.isAvailable && (
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">
@@ -853,6 +904,9 @@ export default function CustomerTableMenu() {
                             src={addon.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80"}
                             alt={addon.name}
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80";
+                            }}
                           />
                         </div>
                         <div className="text-[11px] font-bold text-slate-800 line-clamp-1">{addon.name}</div>
@@ -991,7 +1045,7 @@ export default function CustomerTableMenu() {
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span>{t.tax} {taxRate}%)</span>
+                  <span>{lang === "hi" ? `टैक्स (GST ${taxRate}%)` : `Taxes (GST ${taxRate}%)`}</span>
                   <span>
                     {restaurant.currencySymbol}
                     {taxAmount}
@@ -1133,6 +1187,17 @@ export default function CustomerTableMenu() {
                         </div>
                       )}
 
+                      {/* WhatsApp Bill Receipt Button */}
+                      <a
+                        href={generateWhatsAppBillUri(order)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full mt-2.5 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>{lang === "hi" ? "व्हाट्सएप पर बिल रसीद प्राप्त करें 💬" : "Get Bill Receipt on WhatsApp 💬"}</span>
+                      </a>
+
                       {/* Interactive Meal Rating & Google Review Boost */}
                       {(order.status === "served" || order.status === "completed") && (
                         <div className="mt-3 pt-3 border-t border-slate-200/90 text-center">
@@ -1194,6 +1259,67 @@ export default function CustomerTableMenu() {
           </div>
         </div>
       )}
+      {/* Table Switcher Modal */}
+      {isTablePickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[80vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-slate-900 text-base">
+                  {lang === "hi" ? "टेबल बदलें" : "Switch Table"}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {lang === "hi" ? "वर्तमान टेबल: " : "Current: "}
+                  <strong className="text-orange-600">{currentTable?.tableNumber}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setIsTablePickerOpen(false)}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto">
+              <p className="text-xs text-slate-500 mb-3">
+                {lang === "hi" ? "कृपया अपनी सही टेबल चुनें:" : "Select your actual table number:"}
+              </p>
+              <div className="grid grid-cols-3 gap-2.5">
+                {restaurant.tables.map((tbl) => {
+                  const isCurrent = tbl.id === currentTable?.id;
+                  return (
+                    <Link
+                      key={tbl.id}
+                      href={`/r/${slug}/t/${tbl.id}`}
+                      onClick={() => setIsTablePickerOpen(false)}
+                      className={`p-3 rounded-xl border text-center transition ${
+                        isCurrent
+                          ? "border-orange-500 bg-orange-50 font-black text-orange-700 shadow-sm"
+                          : "border-slate-200 hover:border-orange-200 text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{tbl.tableNumber}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {isCurrent ? (lang === "hi" ? "वर्तमान" : "Current") : `${tbl.seats || 4} seats`}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <button
+                onClick={() => setIsTablePickerOpen(false)}
+                className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition"
+              >
+                {lang === "hi" ? "बंद करें" : "Close"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1218,12 +1344,17 @@ function OrderUpiBox({
   }, [restaurant, order, tableNumber]);
 
   useEffect(() => {
-    QRCode.toDataURL(uri, {
-      width: 220,
-      margin: 1,
-      color: { dark: "#0f172a", light: "#ffffff" },
-    })
-      .then(setQrUrl)
+    import("qrcode")
+      .then((mod) => {
+        const QRCode = mod.default || mod;
+        QRCode.toDataURL(uri, {
+          width: 220,
+          margin: 1,
+          color: { dark: "#0f172a", light: "#ffffff" },
+        })
+          .then((url: string) => setQrUrl(url))
+          .catch(() => setQrUrl(null));
+      })
       .catch(() => setQrUrl(null));
   }, [uri]);
 

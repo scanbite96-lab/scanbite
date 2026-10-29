@@ -6,14 +6,30 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { restaurantId, categoryId, name, description, price, isVeg, imageUrl } = body;
 
-    if (!restaurantId || !categoryId || !name || price === undefined) {
+    if (!restaurantId || !name || price === undefined) {
       return NextResponse.json({ error: "Missing required dish fields" }, { status: 400 });
+    }
+
+    let catId = categoryId;
+    if (!catId) {
+      let cat = await prisma.category.findFirst({ where: { restaurantId } });
+      if (!cat) {
+        cat = await prisma.category.create({
+          data: {
+            restaurantId,
+            name: "Main Course",
+            icon: "🍛",
+            sortOrder: 1,
+          },
+        });
+      }
+      catId = cat.id;
     }
 
     const item = await prisma.menuItem.create({
       data: {
         restaurantId,
-        categoryId,
+        categoryId: catId,
         name,
         description: description || "",
         price: Number(price),
