@@ -139,6 +139,7 @@ export type AuthUser = {
   ownerEmail?: string | null;
   ownerName?: string | null;
   role: "owner" | "staff" | "admin";
+  staffPin?: string | null;
   staffId?: string;
   staffName?: string;
   staffRole?: string;

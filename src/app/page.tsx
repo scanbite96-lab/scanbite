@@ -49,10 +49,10 @@ export default function SaaSPlatformHome() {
               <span>Get ScanBite (Free Demo)</span>
             </Link>
             <Link
-              href="/dashboard"
+              href="/dashboard?demo=true"
               className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-2"
             >
-              <span>Live Kitchen Dashboard</span>
+              <span>Explore Live Demo</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
@@ -90,15 +90,16 @@ export default function SaaSPlatformHome() {
               className="w-full sm:w-auto px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2"
             >
               <Smartphone className="w-5 h-5" />
-              <span>Experience Diner QR Menu (Table 4)</span>
+              <span>📱 Customer QR Menu (Table 4 Demo)</span>
             </Link>
 
             <Link
-              href="/dashboard"
+              href="/dashboard?demo=true"
+              target="_blank"
               className="w-full sm:w-auto px-6 py-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-2xl border border-slate-700/80 transition active:scale-95 flex items-center justify-center gap-2"
             >
               <ChefHat className="w-5 h-5 text-orange-400" />
-              <span>Open Restaurant & KDS Console</span>
+              <span>🍳 Live Kitchen &amp; Owner Console (Instant Demo)</span>
             </Link>
           </div>
 

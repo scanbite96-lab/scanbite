@@ -608,6 +608,19 @@ export default function CustomerTableMenu() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
+      {/* Demo View Banner */}
+      {slug === "grand-spice" && (
+        <div className="bg-slate-900 text-slate-200 text-xs py-2 px-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-bold text-white text-[11px]">📱 Diner QR Ordering (Table 4 Demo)</span>
+          </div>
+          <Link href="/register" className="text-orange-400 hover:text-orange-300 font-bold text-[11px] underline">
+            Get QR Menu for your cafe →
+          </Link>
+        </div>
+      )}
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 text-xs sm:text-sm font-semibold animate-bounce max-w-[90vw] text-center border border-slate-700">

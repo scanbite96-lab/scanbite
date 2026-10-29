@@ -97,6 +97,7 @@ export default function RestaurantDashboard() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   // Quick Dish Stock Modal for Kitchen Staff
   const [isStaffStockModalOpen, setIsStaffStockModalOpen] = useState(false);
@@ -200,6 +201,33 @@ export default function RestaurantDashboard() {
       try {
         const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
         const querySlug = sp?.get("slug");
+        const queryDemo = sp?.get("demo") === "true";
+
+        if (queryDemo) {
+          setIsDemoMode(true);
+          const demoUser: AuthUser = {
+            id: "rest-001",
+            name: "The Grand Spice Kitchen",
+            slug: "grand-spice",
+            ownerEmail: "demo@scanbite.com",
+            ownerName: "Demo Partner",
+            role: "owner",
+            staffPin: "1234",
+            permissions: {
+              canManageOrders: true,
+              canManageMenu: true,
+              canManageBilling: true,
+              canManageRequests: true,
+            },
+          };
+          setAuthUser(demoUser);
+          setRestaurantSlug("grand-spice");
+          setStaffRestaurantSlug("grand-spice");
+          setActiveTab("kds");
+          setIsAuthLoading(false);
+          return;
+        }
+
         if (querySlug) {
           setStaffRestaurantSlug(querySlug);
           setLoginIdentifier(querySlug);
@@ -1227,6 +1255,46 @@ export default function RestaurantDashboard() {
               </p>
             </div>
 
+            {/* 1-Click Instant Demo Button */}
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-orange-600/15 via-amber-600/15 to-orange-600/15 border border-orange-500/30 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-black text-orange-400 mb-1">
+                <Sparkles className="w-4 h-4" />
+                <span>Just exploring ScanBite?</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mb-3">
+                No password required. Test our live Kitchen KDS, staff management, and menu stock in 1 click!
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDemoMode(true);
+                  const demoUser: AuthUser = {
+                    id: "rest-001",
+                    name: "The Grand Spice Kitchen",
+                    slug: "grand-spice",
+                    ownerEmail: "demo@scanbite.com",
+                    ownerName: "Demo Partner",
+                    role: "owner",
+                    staffPin: "1234",
+                    permissions: {
+                      canManageOrders: true,
+                      canManageMenu: true,
+                      canManageBilling: true,
+                      canManageRequests: true,
+                    },
+                  };
+                  setAuthUser(demoUser);
+                  setRestaurantSlug("grand-spice");
+                  setStaffRestaurantSlug("grand-spice");
+                  setActiveTab("kds");
+                }}
+                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-orange-500/25 transition active:scale-95"
+              >
+                <ChefHat className="w-4 h-4" />
+                <span>Enter Live Interactive Demo (No Login Needed) →</span>
+              </button>
+            </div>
+
             {/* Tab Switcher: Owner vs Staff */}
             <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-6">
               <button
@@ -1437,6 +1505,22 @@ export default function RestaurantDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
+      {/* Interactive Demo Mode Top Banner */}
+      {isDemoMode && (
+        <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 text-white text-xs font-bold py-2.5 px-4 shadow-md flex flex-wrap items-center justify-between gap-2 sticky top-0 z-40 border-b border-orange-400/40">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>🌟 ScanBite Interactive Demo Mode (Grand Spice) • Try advancing orders, managing stock & kitchen!</span>
+          </div>
+          <Link
+            href="/register"
+            className="bg-white text-slate-950 hover:bg-slate-100 px-3 py-1 rounded-lg text-[11px] font-black transition shrink-0 shadow-sm"
+          >
+            Get ScanBite For Your Restaurant →
+          </Link>
+        </div>
+      )}
+
       {/* Top Navigation Bar */}
       <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
