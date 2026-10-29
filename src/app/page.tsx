@@ -46,7 +46,7 @@ export default function SaaSPlatformHome() {
               href="/register"
               className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/30 transition active:scale-95"
             >
-              <span>+ Register Restaurant</span>
+              <span>Get ScanBite (Free Demo)</span>
             </Link>
             <Link
               href="/dashboard"

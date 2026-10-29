@@ -10,318 +10,329 @@ import {
   ChefHat, 
   QrCode, 
   Smartphone,
-  Store,
   Phone,
-  CreditCard,
-  MapPin
+  MapPin,
+  MessageSquare,
+  ShieldCheck,
+  Check,
+  Zap,
+  Users
 } from "lucide-react";
 
-export default function RegisterRestaurantPage() {
-  const [step, setStep] = useState<1 | 2>(1);
+export default function RequestRestaurantSetupPage() {
+  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Form Fields
-  const [name, setName] = useState("");
+  const [restaurantName, setRestaurantName] = useState("");
   const [ownerName, setOwnerName] = useState("");
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [staffPin, setStaffPin] = useState("1234");
-  const [tagline, setTagline] = useState("");
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
-  const [upiId, setUpiId] = useState("");
-  const [tablesCount, setTablesCount] = useState(8);
+  const [city, setCity] = useState("");
+  const [tablesCount, setTablesCount] = useState("6-15 Tables (Standard Dine-In)");
+  const [notes, setNotes] = useState("");
 
-  // Result
-  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const supportPhone = "+91 98765 43210";
+  const cleanPhone = "919876543210";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!restaurantName.trim() || !phone.trim()) return;
 
     setLoading(true);
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-
     try {
-      const res = await fetch("/api/restaurants", {
+      await fetch("/api/inquiries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name,
-          slug,
-          ownerName: ownerName || "Owner",
-          ownerEmail: ownerEmail || null,
-          password: password || "admin123",
-          staffPin: staffPin || "1234",
-          tagline: tagline || "Authentic Taste, Fast Service",
-          phone: phone || "+91 99999 00000",
-          address: address || "City Center",
-          upiId: upiId || "restaurant@upi",
-          tablesCount: Number(tablesCount) || 6,
+          restaurantName: restaurantName.trim(),
+          ownerName: ownerName.trim() || "Owner",
+          phone: phone.trim(),
+          city: city.trim() || "India",
+          tablesCount,
+          notes: notes.trim(),
         }),
       });
-
-      // Auto login
-      await fetch("/api/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "login",
-          identifier: ownerEmail || slug,
-          password: password || "admin123",
-        }),
-      });
-
-      setCreatedSlug(slug);
-      setStep(2);
+      setSubmitted(true);
     } catch {
-      setCreatedSlug(slug);
-      setStep(2);
+      setSubmitted(true);
     } finally {
       setLoading(false);
     }
   };
 
+  const getWhatsAppLink = (customText?: string) => {
+    const text = customText || `Hi ScanBite Team! I want to set up QR Digital Menu for my restaurant "${restaurantName || "My Restaurant"}" in ${city || "my city"}. Please contact me.`;
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-orange-500 selection:text-white">
-      {/* Header */}
-      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur py-4 px-6">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center font-black text-white text-sm">
+      {/* Top Header */}
+      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur py-4 px-6 sticky top-0 z-40">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-base shadow-md shadow-orange-600/30">
               ⚡
             </div>
-            <span className="font-extrabold text-base text-white">ScanBite SaaS</span>
+            <div>
+              <span className="font-extrabold text-base text-white tracking-tight">ScanBite</span>
+              <span className="text-[10px] ml-1.5 font-bold uppercase tracking-widest text-orange-400 bg-orange-950/60 border border-orange-800/60 px-1.5 py-0.5 rounded">
+                Partner Setup
+              </span>
+            </div>
           </Link>
-          <Link href="/dashboard" className="text-xs text-slate-400 hover:text-white">
-            Existing Dashboard →
+
+          <Link
+            href="/dashboard"
+            className="text-xs font-bold text-slate-400 hover:text-white transition flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3.5 py-2 rounded-xl"
+          >
+            <span>Existing Restaurant Login</span>
+            <ArrowRight className="w-3.5 h-3.5 text-orange-400" />
           </Link>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="max-w-xl w-full mx-auto p-4 sm:p-6 my-auto">
-        {step === 1 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-            <div className="text-center mb-6">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-950/60 border border-orange-500/30 text-orange-400 text-xs font-bold mb-3">
-                <Sparkles className="w-3.5 h-3.5" /> 100% Free Self-Serve Onboarding
-              </span>
-              <h1 className="text-2xl font-black text-white">Register Your Restaurant</h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Start taking digital orders from tables in under 2 minutes. No credit card required.
+      <main className="max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto">
+        {!submitted ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Value Column */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-950/60 border border-orange-500/30 text-orange-400 text-xs font-bold">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Zero Hardware Needed • 24hr Setup</span>
+              </div>
+
+              <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                Launch QR Ordering at your Restaurant.
+              </h1>
+
+              <p className="text-sm text-slate-400 leading-relaxed">
+                Empower diners to browse photos, place orders, and pay directly from their phones. Cut wait-times by 40% and increase table turnover.
               </p>
+
+              <div className="space-y-3 pt-2 text-xs text-slate-300">
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <span>High-resolution digital menu with veg/non-veg tags</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <span>Instant live Kitchen KDS screen for chefs &amp; waiters</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <span>Table Call buttons (Water, Bill, Waiter call in 1 tap)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-5 h-5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <span>Print-ready high-res QR standees generated for all tables</span>
+                </div>
+              </div>
+
+              {/* Direct WhatsApp Callout */}
+              <div className="p-4 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl">
+                <div className="font-bold text-xs text-emerald-300 mb-1 flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-emerald-400" />
+                  <span>Want to talk to our founder immediately?</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mb-3">
+                  Get pricing details, live demo on your phone, and complete onboarding within 15 minutes.
+                </p>
+                <a
+                  href={getWhatsAppLink("Hi ScanBite Team! I want to set up QR digital menu for my restaurant. Please share live demo and pricing.")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs py-2.5 px-4 rounded-xl transition shadow-md shadow-emerald-600/30"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Chat on WhatsApp Directly →</span>
+                </a>
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                  <Store className="w-3.5 h-3.5 text-orange-400" /> Restaurant or Cafe Name *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Royal Punjabi Dhaba, Cafe Mocha"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-orange-400" /> Tagline or Specialty
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Best Tandoori in Town, Fresh Artisanal Coffee"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                />
-              </div>
-
-              {/* Security & Login Credentials */}
-              <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
-                <div className="text-[11px] font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
-                  🔐 Dashboard Security & Login Credentials
+            {/* Right Form Column */}
+            <div className="lg:col-span-7">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
+                <div className="mb-6">
+                  <h2 className="text-xl font-black text-white">Request Free Restaurant Onboarding</h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Fill in your restaurant details below. Our team will verify and activate your dashboard.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <form onSubmit={handleSubmit} className="space-y-4 text-xs">
                   <div>
-                    <label className="block font-bold text-slate-300 mb-1">
-                      Owner Name
+                    <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-orange-400" />
+                      <span>Restaurant / Cafe Name *</span>
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Rajesh Sharma"
-                      value={ownerName}
-                      onChange={(e) => setOwnerName(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                      required
+                      placeholder="e.g. Royal Biryani &amp; Cafe"
+                      value={restaurantName}
+                      onChange={(e) => setRestaurantName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
                     />
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Owner / Manager Name *</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Rahul Sharma"
+                        value={ownerName}
+                        onChange={(e) => setOwnerName(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-orange-400" />
+                        <span>WhatsApp / Phone Number *</span>
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="e.g. +91 98765 43210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-orange-400" />
+                        <span>City / Location *</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Mumbai, Delhi NCR, Jaipur"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                        <QrCode className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Estimated Dining Tables</span>
+                      </label>
+                      <select
+                        value={tablesCount}
+                        onChange={(e) => setTablesCount(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                      >
+                        <option value="1-5 Tables (Small Cafe / QSR)">1-5 Tables (Small Cafe / QSR)</option>
+                        <option value="6-15 Tables (Standard Dine-In)">6-15 Tables (Standard Dine-In)</option>
+                        <option value="16-30 Tables (Large Restaurant)">16-30 Tables (Large Restaurant)</option>
+                        <option value="30+ Tables (Hotel / Multi-floor / Resort)">30+ Tables (Hotel / Resort)</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block font-bold text-slate-300 mb-1">
-                      Owner Login Email
+                      Any specific requirements? (Optional)
                     </label>
-                    <input
-                      type="email"
-                      placeholder="owner@mycafe.com"
-                      value={ownerEmail}
-                      onChange={(e) => setOwnerEmail(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Need Hindi menu, UPI QR payments, or multi-kitchen KDS..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2 rounded-xl text-white font-medium focus:outline-none resize-none"
                     />
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-300 mb-1">
-                      Dashboard Password
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="Default: admin123"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-300 mb-1">
-                      Staff Quick PIN (4-Digits)
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={4}
-                      placeholder="Default: 1234"
-                      value={staffPin}
-                      onChange={(e) => setStaffPin(e.target.value.replace(/[^0-9]/g, ""))}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none font-mono"
-                    />
-                  </div>
-                </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full mt-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-orange-600/30 transition active:scale-95 disabled:opacity-50"
+                  >
+                    {loading ? "Submitting Inquiry..." : "Submit Inquiry & Request Demo Call →"}
+                  </button>
+
+                  <p className="text-[10px] text-slate-500 text-center">
+                    🔒 Your details are safe with us. Our founder team will connect via phone or WhatsApp.
+                  </p>
+                </form>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-orange-400" /> Contact Phone
-                  </label>
-                  <input
-                    type="tel"
-                    placeholder="+91 98765 43210"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-orange-400" /> UPI ID (for Customer Payments)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. restaurant@paytm"
-                    value={upiId}
-                    onChange={(e) => setUpiId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-orange-400" /> Location / Address
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Main Market, Sector 14, Jaipur"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                  <QrCode className="w-3.5 h-3.5 text-orange-400" /> How many tables do you have?
-                </label>
-                <select
-                  value={tablesCount}
-                  onChange={(e) => setTablesCount(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                >
-                  <option value={4}>4 Tables (Table 1 to Table 4)</option>
-                  <option value={8}>8 Tables (Table 1 to Table 8)</option>
-                  <option value={12}>12 Tables (Table 1 to Table 12)</option>
-                  <option value={20}>20 Tables (Table 1 to Table 20)</option>
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  We will instantly generate unique QR codes for each of these tables.
-                </p>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full mt-4 bg-orange-600 hover:bg-orange-500 text-white font-black py-3.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-600/30 transition active:scale-95 disabled:opacity-50"
-              >
-                {loading ? "Generating Your Platform..." : "Create Free Restaurant System →"}
-              </button>
-            </form>
+            </div>
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-center animate-in zoom-in-95">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+          /* Submission Success State */
+          <div className="max-w-lg mx-auto bg-slate-900 border border-emerald-500/40 rounded-3xl p-8 shadow-2xl text-center space-y-6 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-inner">
               <CheckCircle2 className="w-8 h-8" />
             </div>
 
-            <h2 className="text-2xl font-black text-white">Congratulations! 🎉</h2>
-            <p className="text-sm text-slate-300 mt-1">
-              <strong>{name}</strong> is now live on ScanBite!
-            </p>
+            <div>
+              <span className="bg-emerald-950 border border-emerald-500/40 text-emerald-300 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full">
+                Inquiry Received Successfully ✓
+              </span>
+              <h2 className="text-2xl font-black text-white mt-3">
+                Thank you, {ownerName || "Partner"}!
+              </h2>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                We have received your setup request for <strong className="text-white">&ldquo;{restaurantName}&rdquo;</strong> in <strong className="text-white">{city}</strong>.
+              </p>
+            </div>
 
-            <div className="my-6 p-4 bg-slate-950 rounded-2xl border border-slate-800 text-left space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Your Restaurant Slug:</span>
-                <span className="font-mono font-bold text-orange-400">/r/{createdSlug}</span>
+            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-left space-y-2 text-xs">
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Restaurant Name:</span>
+                <span className="font-bold text-white">{restaurantName}</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Configured Tables:</span>
-                <span className="font-bold text-white">{tablesCount} Tables Generated</span>
+              <div className="flex items-center justify-between text-slate-400">
+                <span>WhatsApp Contact:</span>
+                <span className="font-bold text-white">{phone}</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Starter Menu:</span>
-                <span className="font-bold text-emerald-400">Pre-loaded & Ready to edit</span>
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Estimated Tables:</span>
+                <span className="font-bold text-white">{tablesCount}</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Owner Login:</span>
-                <span className="font-bold text-white">{ownerEmail || createdSlug}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Staff Quick PIN:</span>
-                <span className="font-mono font-bold text-amber-400">{staffPin || "1234"}</span>
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Response Time:</span>
+                <span className="font-bold text-emerald-400">Within 15 minutes</span>
               </div>
             </div>
 
             <div className="space-y-3">
-              <Link
-                href={`/r/${createdSlug}/t/tbl-1`}
+              <a
+                href={getWhatsAppLink(`Hi ScanBite Team! I just submitted an onboarding inquiry for "${restaurantName}" in ${city} (Phone: ${phone}). Please activate our digital menu!`)}
                 target="_blank"
-                className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow transition active:scale-95"
+                rel="noopener noreferrer"
+                className="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs py-3.5 px-6 rounded-2xl shadow-lg shadow-emerald-600/30 transition active:scale-95"
               >
-                <Smartphone className="w-4 h-4" />
-                <span>Test Table 1 Diner Menu</span>
-              </Link>
+                <MessageSquare className="w-4 h-4" />
+                <span>Open WhatsApp to Connect Immediately →</span>
+              </a>
 
               <Link
-                href={`/dashboard?slug=${createdSlug}`}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
+                href="/"
+                className="block text-xs font-bold text-slate-400 hover:text-white transition py-2"
               >
-                <ChefHat className="w-4 h-4 text-orange-400" />
-                <span>Open Kitchen & QR Management Dashboard</span>
+                ← Return to ScanBite Homepage
               </Link>
             </div>
           </div>
@@ -329,8 +340,8 @@ export default function RegisterRestaurantPage() {
       </main>
 
       {/* Footer */}
-      <footer className="py-4 text-center text-xs text-slate-600 border-t border-slate-800/60">
-        © 2026 ScanBite SaaS • Zero-Investment Digital Menu Solution
+      <footer className="text-center py-4 text-[11px] text-slate-600 border-t border-slate-900">
+        ScanBite Restaurant Operations &amp; QR Ordering SaaS • Direct Inquiries &amp; Dedicated Onboarding
       </footer>
     </div>
   );
