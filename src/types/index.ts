@@ -5,6 +5,18 @@ export type DishCategory = {
   sortOrder: number;
 };
 
+export type PortionVariant = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+export type DishAddon = {
+  id: string;
+  name: string;
+  price: number;
+};
+
 export type MenuItem = {
   id: string;
   categoryId: string;
@@ -19,6 +31,8 @@ export type MenuItem = {
   imageUrl?: string | null;
   stockCount?: number | null;
   lowStockThreshold?: number | null;
+  variants?: PortionVariant[] | null;
+  addons?: DishAddon[] | null;
 };
 
 export type Table = {
@@ -35,6 +49,40 @@ export type OrderItem = {
   quantity: number;
   isVeg: boolean;
   notes?: string | null;
+  variantName?: string | null;
+  selectedAddons?: Array<{ name: string; price: number }> | null;
+  orderedByName?: string | null;
+};
+
+export type TableDiner = {
+  id: string;
+  dinerId: string;
+  name: string;
+  joinedAt: string;
+};
+
+export type TableCartItem = {
+  id: string;
+  menuItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+  isVeg: boolean;
+  notes?: string | null;
+  variantName?: string | null;
+  selectedAddons?: Array<{ name: string; price: number }> | null;
+  dinerId: string;
+  dinerName: string;
+};
+
+export type TableCart = {
+  id: string;
+  restaurantId: string;
+  tableId: string;
+  tableNumber: string;
+  diners: TableDiner[];
+  items: TableCartItem[];
+  updatedAt: string;
 };
 
 export type OrderStatus = "pending" | "cooking" | "ready" | "served" | "completed" | "cancelled";

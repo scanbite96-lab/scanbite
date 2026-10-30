@@ -59,20 +59,12 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
           quantity: it.quantity,
           isVeg: it.isVeg,
           notes: it.notes,
+          orderedByName: it.orderedByName ?? undefined,
         })),
         createdAt: o.createdAt.toISOString(),
         updatedAt: o.updatedAt.toISOString(),
       }));
 
-      // If restaurantId is rest-001 or grand-spice and all orders in DB are served/completed,
-      // also include active demo orders so the live KDS console is never completely blank!
-      if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
-        const hasActive = formatted.some((o) => ["pending", "cooking", "ready"].includes(o.status));
-        if (!hasActive) {
-          const activeDemos = getDemoOrders().filter((o) => ["pending", "cooking", "ready"].includes(o.status));
-          return [...activeDemos, ...formatted];
-        }
-      }
       return formatted;
     }
   } catch (err) {
@@ -129,6 +121,7 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
           quantity: it.quantity,
           isVeg: it.isVeg,
           notes: it.notes,
+          orderedByName: it.orderedByName ?? undefined,
         })),
         createdAt: o.createdAt.toISOString(),
         updatedAt: o.updatedAt.toISOString(),
@@ -198,6 +191,9 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
             quantity: it.quantity,
             isVeg: it.isVeg,
             notes: it.notes,
+            variantName: it.variantName || null,
+            selectedAddons: it.selectedAddons ? it.selectedAddons : undefined,
+            orderedByName: it.orderedByName || null,
           })),
         },
       },
@@ -280,10 +276,6 @@ export const updateOrderStatus = async (
   status?: Order["status"],
   paymentStatus?: Order["paymentStatus"]
 ): Promise<Order | null> => {
-  if (orderId.startsWith("ord-")) {
-    const demoUpdated = updateDemoOrderStatus(orderId, status, paymentStatus);
-    if (demoUpdated) return demoUpdated;
-  }
   try {
     const updateData: Record<string, string> = {};
     if (status) updateData.status = status;
@@ -294,6 +286,10 @@ export const updateOrderStatus = async (
       data: updateData,
       include: { items: true },
     });
+
+    // Also sync in-memory demo store if applicable
+    updateDemoOrderStatus(orderId, status, paymentStatus);
+
     return {
       ...updated,
       status: updated.status as OrderStatus,
@@ -313,9 +309,9 @@ export const updateOrderStatus = async (
       updatedAt: updated.updatedAt.toISOString(),
     };
   } catch (err) {
-    console.error("Prisma updateOrderStatus error:", err);
     const demoUpdated = updateDemoOrderStatus(orderId, status, paymentStatus);
     if (demoUpdated) return demoUpdated;
+    console.error("Prisma updateOrderStatus error:", err);
     return null;
   }
 };

@@ -27,6 +27,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     if (body.action === "reset_demo_orders") {
+      try {
+        await prisma.order.deleteMany({
+          where: { restaurantId: "rest-001" },
+        });
+      } catch {
+        // ignore
+      }
       const reset = resetDemoOrders();
       return NextResponse.json({ success: true, orders: reset });
     }
@@ -77,7 +84,7 @@ export async function POST(request: NextRequest) {
     try {
       dbMenuItems = await prisma.menuItem.findMany({
         where: { restaurantId },
-        select: { id: true, name: true, price: true, isVeg: true, isAvailable: true, stockCount: true },
+        select: { id: true, name: true, price: true, isVeg: true, isAvailable: true, stockCount: true, variants: true, addons: true },
       });
     } catch {
       // ignore
@@ -107,13 +114,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Sanitize items with true database prices
+    // Sanitize items with true database prices including variants & addons
     const sanitizedItems = items.map((it: any) => {
       const dbItem = itemMap.get(it.menuItemId || it.id);
-      const price = dbItem ? dbItem.price : Number(it.price ?? 0);
+      let price = dbItem ? dbItem.price : Number(it.price ?? 0);
       const name = dbItem ? dbItem.name : (it.name || "Dish Item");
       const isVeg = dbItem ? dbItem.isVeg : (it.isVeg !== undefined ? Boolean(it.isVeg) : true);
       const quantity = Math.max(1, Math.min(50, Number(it.quantity) || 1));
+
+      // Calculate price based on selected variant if present
+      let variantName: string | null = null;
+      if (it.variantName && dbItem?.variants && Array.isArray(dbItem.variants)) {
+        const foundVariant = (dbItem.variants as any[]).find((v: any) => v.name === it.variantName);
+        if (foundVariant) {
+          price = foundVariant.price;
+          variantName = foundVariant.name;
+        }
+      }
+
+      // Add verified add-on prices if selected
+      let selectedAddons: any[] | null = null;
+      if (it.selectedAddons && Array.isArray(it.selectedAddons) && it.selectedAddons.length > 0) {
+        selectedAddons = [];
+        const dbAddons = (dbItem?.addons && Array.isArray(dbItem.addons)) ? (dbItem.addons as any[]) : [];
+        for (const sa of it.selectedAddons) {
+          const addonName = typeof sa === "string" ? sa : sa.name;
+          const foundAddon = dbAddons.find((a: any) => a.name === addonName);
+          const addonPrice = foundAddon ? foundAddon.price : (typeof sa === "object" ? Number(sa.price || 0) : 0);
+          price += addonPrice;
+          selectedAddons.push({ name: addonName, price: addonPrice });
+        }
+      }
 
       return {
         menuItemId: it.menuItemId || it.id || "item-custom",
@@ -122,6 +153,9 @@ export async function POST(request: NextRequest) {
         quantity,
         isVeg,
         notes: it.notes || undefined,
+        variantName: variantName || it.variantName || undefined,
+        selectedAddons: selectedAddons || it.selectedAddons || undefined,
+        orderedByName: it.orderedByName || undefined,
       };
     });
 
@@ -164,6 +198,16 @@ export async function POST(request: NextRequest) {
 
     if (!order) {
       return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
+    }
+
+    // Auto-clear shared table cart for this table upon order placement
+    try {
+      const tableCart = await prisma.tableCart.findUnique({ where: { tableId } });
+      if (tableCart) {
+        await prisma.tableCartItem.deleteMany({ where: { cartId: tableCart.id } });
+      }
+    } catch {
+      // ignore
     }
 
     return NextResponse.json(order, { status: 201 });

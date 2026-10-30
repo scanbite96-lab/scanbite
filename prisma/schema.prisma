@@ -70,6 +70,8 @@ model MenuItem {
   imageUrl        String?
   stockCount      Int?        @default(-1) // -1 = unlimited portions, >=0 = remaining portions
   lowStockThreshold Int?      @default(5)  // alert threshold when stockCount <= lowStockThreshold
+  variants        Json?       // Portion sizes e.g. [{"id":"v1","name":"Half Plate","price":180},{"id":"v2","name":"Full Plate","price":320}]
+  addons          Json?       // Custom add-ons e.g. [{"id":"a1","name":"Extra Cheese","price":40}]
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
@@ -110,16 +112,59 @@ model Order {
 }
 
 model OrderItem {
-  id         String   @id @default(cuid())
-  orderId    String
-  menuItemId String
-  name       String
-  price      Float
-  quantity   Int
-  isVeg      Boolean  @default(true)
-  notes      String?
-  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  orderId        String
+  menuItemId     String
+  name           String
+  price          Float
+  quantity       Int
+  isVeg          Boolean  @default(true)
+  notes          String?
+  variantName    String?  // e.g. "Half Plate"
+  selectedAddons Json?    // e.g. [{"name":"Extra Cheese","price":40}]
+  orderedByName  String?  // e.g. "Aakash", "Rahul"
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem       MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+}
+
+model TableCart {
+  id           String          @id @default(cuid())
+  restaurantId String
+  tableId      String          @unique
+  tableNumber  String
+  diners       TableDiner[]
+  items        TableCartItem[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+model TableDiner {
+  id        String    @id @default(cuid())
+  cartId    String
+  dinerId   String
+  name      String
+  joinedAt  DateTime  @default(now())
+  cart      TableCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, dinerId])
+}
+
+model TableCartItem {
+  id             String    @id @default(cuid())
+  cartId         String
+  menuItemId     String
+  name           String
+  price          Float
+  quantity       Int       @default(1)
+  isVeg          Boolean   @default(true)
+  notes          String?
+  variantName    String?
+  selectedAddons Json?
+  dinerId        String
+  dinerName      String
+  cart           TableCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model ServiceRequest {

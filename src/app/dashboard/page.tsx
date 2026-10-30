@@ -73,15 +73,17 @@ export default function RestaurantDashboard() {
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Sound Chime State
+  // Sound Chime State & Seen IDs tracking (Prevents repeated phantom chimes)
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const prevOrdersCountRef = useRef(0);
-  const prevRequestsCountRef = useRef(0);
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const isInitialOrdersLoadedRef = useRef<boolean>(false);
+  const knownRequestIdsRef = useRef<Set<string>>(new Set());
+  const isInitialReqsLoadedRef = useRef<boolean>(false);
   const lastLoadedSlugRef = useRef<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   // KDS filter & search
-  const [kdsFilter, setKdsFilter] = useState<"active" | "pending" | "cooking" | "ready" | "unpaid" | "all">("active");
+  const [kdsFilter, setKdsFilter] = useState<"active" | "pending" | "cooking" | "ready" | "served" | "unpaid" | "all">("active");
   const [kdsSearch, setKdsSearch] = useState("");
 
   // Single Table Print Modal
@@ -494,10 +496,12 @@ export default function RestaurantDashboard() {
     loadRestaurantsList();
   }, []);
 
-  // Reset alert counters when switching restaurant
+  // Reset alert tracking when switching restaurant
   useEffect(() => {
-    prevOrdersCountRef.current = 0;
-    prevRequestsCountRef.current = 0;
+    knownOrderIdsRef.current.clear();
+    isInitialOrdersLoadedRef.current = false;
+    knownRequestIdsRef.current.clear();
+    isInitialReqsLoadedRef.current = false;
   }, [restaurantSlug]);
 
   // Fetch current restaurant data
@@ -508,7 +512,10 @@ export default function RestaurantDashboard() {
       try {
         const restRes = await fetch(`/api/restaurants/${restaurantSlug}`);
         if (restRes.ok) {
-          restData = await restRes.json();
+          const json = await restRes.json();
+          if (json && !json.error && json.slug) {
+            restData = json;
+          }
         }
       } catch {
         // ignore
@@ -540,10 +547,22 @@ export default function RestaurantDashboard() {
           if (ordRes.ok) {
             const ordData: Order[] = await ordRes.json();
             
-            if (prevOrdersCountRef.current > 0 && ordData.length > prevOrdersCountRef.current) {
-              playNewOrderChime();
+            // Bulletproof Chime: Only ring when a genuinely brand-new order arrives (< 60s ago)
+            if (!isInitialOrdersLoadedRef.current) {
+              ordData.forEach((o) => knownOrderIdsRef.current.add(o.id));
+              isInitialOrdersLoadedRef.current = true;
+            } else {
+              const brandNewOrders = ordData.filter((o) => !knownOrderIdsRef.current.has(o.id));
+              if (brandNewOrders.length > 0) {
+                const hasFreshOrder = brandNewOrders.some(
+                  (o) => Date.now() - new Date(o.createdAt).getTime() < 60000
+                );
+                if (hasFreshOrder) {
+                  playNewOrderChime();
+                }
+                brandNewOrders.forEach((o) => knownOrderIdsRef.current.add(o.id));
+              }
             }
-            prevOrdersCountRef.current = ordData.length;
             setOrders(ordData);
           }
         } catch {
@@ -555,11 +574,23 @@ export default function RestaurantDashboard() {
           const reqRes = await fetch(`/api/service-requests?restaurantId=${restData.id}`);
           if (reqRes.ok) {
             const reqData: ServiceRequest[] = await reqRes.json();
-            const pendingCount = reqData.filter((r) => r.status === "pending").length;
-            if (prevRequestsCountRef.current > 0 && pendingCount > prevRequestsCountRef.current) {
-              playServiceChime();
+            const pendingReqs = reqData.filter((r) => r.status === "pending");
+
+            if (!isInitialReqsLoadedRef.current) {
+              pendingReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
+              isInitialReqsLoadedRef.current = true;
+            } else {
+              const brandNewReqs = pendingReqs.filter((r) => !knownRequestIdsRef.current.has(r.id));
+              if (brandNewReqs.length > 0) {
+                const hasFreshReq = brandNewReqs.some(
+                  (r) => Date.now() - new Date(r.createdAt).getTime() < 60000
+                );
+                if (hasFreshReq) {
+                  playServiceChime();
+                }
+                brandNewReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
+              }
             }
-            prevRequestsCountRef.current = pendingCount;
             setServiceRequests(reqData);
           }
         } catch {
@@ -635,6 +666,7 @@ export default function RestaurantDashboard() {
       if (res.ok) {
         const data = await res.json();
         if (data.orders) {
+          data.orders.forEach((o: Order) => knownOrderIdsRef.current.add(o.id));
           setOrders(data.orders);
           setKdsFilter("active");
           showToast("4 Active Demo Orders Loaded into Kitchen Console! 👨‍🍳", "success");
@@ -1235,6 +1267,7 @@ export default function RestaurantDashboard() {
       } else if (kdsFilter === "pending") matchesFilter = o.status === "pending";
       else if (kdsFilter === "cooking") matchesFilter = o.status === "cooking";
       else if (kdsFilter === "ready") matchesFilter = o.status === "ready";
+      else if (kdsFilter === "served") matchesFilter = o.status === "served";
       else if (kdsFilter === "unpaid") matchesFilter = o.paymentStatus !== "paid" && o.status !== "cancelled";
 
       if (!matchesFilter) return false;
@@ -1580,6 +1613,10 @@ export default function RestaurantDashboard() {
   }
 
   if (!restaurant) {
+    if (restaurantSlug === "grand-spice" || isDemoMode) {
+      setRestaurant(DEMO_RESTAURANT);
+      return null;
+    }
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-slate-900 text-white text-center">
         <Store className="w-12 h-12 text-orange-400 mb-3" />
@@ -2019,6 +2056,14 @@ export default function RestaurantDashboard() {
                   Ready ({orders.filter((o) => o.status === "ready").length})
                 </button>
                 <button
+                  onClick={() => setKdsFilter("served")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                    kdsFilter === "served" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Served ({orders.filter((o) => o.status === "served").length})
+                </button>
+                <button
                   onClick={() => setKdsFilter("unpaid")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
                     kdsFilter === "unpaid" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
@@ -2236,14 +2281,24 @@ export default function RestaurantDashboard() {
                                   {item.quantity}x
                                 </span>
                                 <div>
-                                  <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                                  <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap">
                                     <span
-                                      className={`w-2.5 h-2.5 rounded-full inline-block ${
+                                      className={`w-2.5 h-2.5 rounded-full inline-block shrink-0 ${
                                         item.isVeg ? "bg-emerald-500" : "bg-red-500"
                                       }`}
                                     />
                                     <span>{item.name}</span>
+                                    {item.variantName && (
+                                      <span className="text-[10px] bg-orange-100 text-orange-800 font-extrabold px-1.5 py-0.5 rounded border border-orange-200">
+                                        {item.variantName}
+                                      </span>
+                                    )}
                                   </div>
+                                  {item.selectedAddons && item.selectedAddons.length > 0 && (
+                                    <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
+                                      + {item.selectedAddons.map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                                    </div>
+                                  )}
                                   {item.notes && (
                                     <p className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded mt-0.5 font-medium border border-amber-200/60">
                                       Note: {item.notes}
@@ -3196,6 +3251,16 @@ export default function RestaurantDashboard() {
                   <div key={idx} className="flex justify-between text-xs">
                     <div>
                       <span className="font-extrabold">{it.quantity}x</span> {it.name}
+                      {it.variantName && (
+                        <span className="ml-1 text-[11px] font-bold text-orange-600 uppercase">
+                          [{it.variantName}]
+                        </span>
+                      )}
+                      {it.selectedAddons && it.selectedAddons.length > 0 && (
+                        <div className="text-[10px] text-slate-500 pl-4">
+                          + {it.selectedAddons.map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                        </div>
+                      )}
                       {it.notes && <div className="text-[10px] font-sans text-amber-700">** {it.notes} **</div>}
                     </div>
                   </div>

@@ -64,6 +64,10 @@ export const DEMO_RESTAURANT: Restaurant = {
       stockCount: 25,
       lowStockThreshold: 5,
       imageUrl: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80",
+      addons: [
+        { id: "add-corn-1", name: "Cheesy Jalapeno Dip", price: 35 },
+        { id: "add-corn-2", name: "Peri Peri Seasoning", price: 20 },
+      ],
     },
     {
       id: "item-3",
@@ -124,6 +128,14 @@ export const DEMO_RESTAURANT: Restaurant = {
       stockCount: 22,
       lowStockThreshold: 5,
       imageUrl: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=500&auto=format&fit=crop&q=80",
+      variants: [
+        { id: "var-pbm-half", name: "Half Portion", price: 190 },
+        { id: "var-pbm-full", name: "Full Portion", price: 320 },
+      ],
+      addons: [
+        { id: "add-pbm-butter", name: "Extra Amul Butter", price: 30 },
+        { id: "add-pbm-paneer", name: "Extra Malai Paneer Cubes", price: 50 },
+      ],
     },
     {
       id: "item-7",
@@ -139,6 +151,14 @@ export const DEMO_RESTAURANT: Restaurant = {
       stockCount: 16,
       lowStockThreshold: 5,
       imageUrl: "https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?w=500&auto=format&fit=crop&q=80",
+      variants: [
+        { id: "var-bc-half", name: "Half Portion", price: 260 },
+        { id: "var-bc-full", name: "Full Portion", price: 410 },
+      ],
+      addons: [
+        { id: "add-bc-butter", name: "Extra Amul Butter", price: 30 },
+        { id: "add-bc-gravy", name: "Extra Makhani Gravy Cup", price: 50 },
+      ],
     },
     {
       id: "item-8",
@@ -184,6 +204,15 @@ export const DEMO_RESTAURANT: Restaurant = {
       stockCount: 20,
       lowStockThreshold: 5,
       imageUrl: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=500&auto=format&fit=crop&q=80",
+      variants: [
+        { id: "var-vb-half", name: "Half Plate", price: 180 },
+        { id: "var-vb-full", name: "Full Plate", price: 290 },
+      ],
+      addons: [
+        { id: "add-vb-raita", name: "Extra Boondi Raita", price: 35 },
+        { id: "add-vb-salan", name: "Mirchi Ka Salan", price: 40 },
+        { id: "add-vb-papad", name: "Crispy Roasted Papad", price: 20 },
+      ],
     },
     {
       id: "item-11",
@@ -199,6 +228,15 @@ export const DEMO_RESTAURANT: Restaurant = {
       stockCount: 15,
       lowStockThreshold: 5,
       imageUrl: "https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=500&auto=format&fit=crop&q=80",
+      variants: [
+        { id: "var-mb-half", name: "Half Plate", price: 280 },
+        { id: "var-mb-full", name: "Full Plate", price: 460 },
+      ],
+      addons: [
+        { id: "add-mb-egg", name: "Extra Boiled Egg", price: 20 },
+        { id: "add-mb-aloo", name: "Spiced Kolkata Aloo", price: 25 },
+        { id: "add-mb-raita", name: "Mint Cucumber Raita", price: 30 },
+      ],
     },
     {
       id: "item-12",

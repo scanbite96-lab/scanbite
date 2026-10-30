@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
-import { Restaurant, MenuItem, Order, OrderItem } from "@/types";
+import { Restaurant, MenuItem, Order, OrderItem, PortionVariant, DishAddon } from "@/types";
 import { DEMO_RESTAURANT } from "@/lib/demoData";
 import { translations, Language } from "@/lib/translations";
 import { 
@@ -48,12 +48,31 @@ export default function CustomerTableMenu() {
   const [dietaryFilter, setDietaryFilter] = useState<"all" | "veg" | "non_veg">("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Cart: Map of menuItemId -> { item: MenuItem, quantity: number, notes: string }
-  const [cart, setCart] = useState<Record<string, { item: MenuItem; quantity: number; notes: string }>>({});
+  // Cart: Map of cartKey -> Cart item entry
+  const [cart, setCart] = useState<
+    Record<
+      string,
+      {
+        cartKey: string;
+        item: MenuItem;
+        quantity: number;
+        notes: string;
+        variantName?: string;
+        selectedAddons?: DishAddon[];
+        unitPrice: number;
+      }
+    >
+  >({});
   const [cartLoaded, setCartLoaded] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [isTablePickerOpen, setIsTablePickerOpen] = useState(false);
+
+  // Customisation Modal State (Portion Sizes & Add-ons)
+  const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<PortionVariant | null>(null);
+  const [selectedAddons, setSelectedAddons] = useState<DishAddon[]>([]);
+  const [customizingQty, setCustomizingQty] = useState<number>(1);
 
   // Promo Code State
   const [couponInput, setCouponInput] = useState("");
@@ -91,10 +110,18 @@ export default function CustomerTableMenu() {
           throw new Error("Restaurant not found");
         }
         const data = await res.json();
+        if (!data || data.error || !data.tables || data.tables.length === 0) {
+          if (slug === "grand-spice") {
+            setRestaurant(DEMO_RESTAURANT);
+            return;
+          }
+          throw new Error(data?.error || "Restaurant not found");
+        }
         setRestaurant(data);
       } catch (err: unknown) {
         if (slug === "grand-spice") {
           setRestaurant(DEMO_RESTAURANT);
+          setError(null);
         } else if (err instanceof Error) {
           setError(err.message);
         } else {
@@ -140,7 +167,22 @@ export default function CustomerTableMenu() {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        setCart(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        const normalized: Record<string, { cartKey: string; item: MenuItem; quantity: number; notes: string; variantName?: string; selectedAddons?: DishAddon[]; unitPrice: number }> = {};
+        for (const [key, val] of Object.entries<any>(parsed)) {
+          if (val && val.item) {
+            normalized[key] = {
+              cartKey: val.cartKey || key,
+              item: val.item,
+              quantity: Number(val.quantity) || 1,
+              notes: val.notes || "",
+              variantName: val.variantName || undefined,
+              selectedAddons: val.selectedAddons || [],
+              unitPrice: Number(val.unitPrice ?? val.item.price),
+            };
+          }
+        }
+        setCart(normalized);
       }
       const savedName = localStorage.getItem("scanbite_diner_name");
       if (savedName) setCustomerName(savedName);
@@ -269,6 +311,62 @@ export default function CustomerTableMenu() {
     }
   };
 
+  // Open Customisation Bottom Sheet Modal
+  const openCustomiseModal = (item: MenuItem) => {
+    setCustomizingItem(item);
+    setSelectedVariant(item.variants && item.variants.length > 0 ? item.variants[0] : null);
+    setSelectedAddons([]);
+    setCustomizingQty(1);
+  };
+
+  const handleItemAddClick = (item: MenuItem) => {
+    const hasVariants = Boolean(item.variants && item.variants.length > 0);
+    const hasAddons = Boolean(item.addons && item.addons.length > 0);
+    if (hasVariants || hasAddons) {
+      openCustomiseModal(item);
+    } else {
+      addToCart(item);
+    }
+  };
+
+  const handleConfirmCustomization = () => {
+    if (!customizingItem) return;
+    triggerHaptic();
+
+    const variantPart = selectedVariant ? selectedVariant.name : "base";
+    const addonIds = [...selectedAddons].map((a) => a.id).sort().join("-");
+    const cartKey = `${customizingItem.id}_${variantPart}_${addonIds || "none"}`;
+
+    const basePrice = selectedVariant ? selectedVariant.price : customizingItem.price;
+    const addonsSum = selectedAddons.reduce((sum, a) => sum + a.price, 0);
+    const unitPrice = basePrice + addonsSum;
+
+    setCart((prev) => {
+      const existing = prev[cartKey];
+      const newQty = (existing?.quantity || 0) + customizingQty;
+      return {
+        ...prev,
+        [cartKey]: {
+          cartKey,
+          item: customizingItem,
+          quantity: newQty,
+          notes: existing?.notes || "",
+          variantName: selectedVariant?.name,
+          selectedAddons: selectedAddons.map((a) => ({ id: a.id, name: a.name, price: a.price })),
+          unitPrice,
+        },
+      };
+    });
+
+    const variantLabel = selectedVariant ? ` (${selectedVariant.name})` : "";
+    showToast(
+      lang === "hi"
+        ? `✅ ${customizingItem.name}${variantLabel} कार्ट में जोड़ा गया!`
+        : `✅ Added ${customizingItem.name}${variantLabel} to cart!`
+    );
+    setCustomizingItem(null);
+  };
+
   const addToCart = (item: MenuItem) => {
     triggerHaptic();
     setCart((prev) => {
@@ -281,26 +379,54 @@ export default function CustomerTableMenu() {
       }
       return {
         ...prev,
-        [item.id]: { item, quantity: 1, notes: "" },
+        [item.id]: {
+          cartKey: item.id,
+          item,
+          quantity: 1,
+          notes: "",
+          unitPrice: item.price,
+        },
       };
     });
   };
 
-  const removeFromCart = (itemId: string) => {
+  const incrementCartKey = (key: string) => {
     triggerHaptic();
     setCart((prev) => {
-      const existing = prev[itemId];
+      const existing = prev[key];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [key]: { ...existing, quantity: existing.quantity + 1 },
+      };
+    });
+  };
+
+  const decrementCartKey = (key: string) => {
+    triggerHaptic();
+    setCart((prev) => {
+      const existing = prev[key];
       if (!existing) return prev;
       if (existing.quantity <= 1) {
         const copy = { ...prev };
-        delete copy[itemId];
+        delete copy[key];
         return copy;
       }
       return {
         ...prev,
-        [itemId]: { ...existing, quantity: existing.quantity - 1 },
+        [key]: { ...existing, quantity: existing.quantity - 1 },
       };
     });
+  };
+
+  const removeFromCart = (keyOrId: string) => {
+    decrementCartKey(keyOrId);
+  };
+
+  const getItemCartQuantity = (itemId: string) => {
+    return Object.values(cart)
+      .filter((c) => c.item.id === itemId)
+      .reduce((sum, c) => sum + c.quantity, 0);
   };
 
   const clearEntireCart = () => {
@@ -313,12 +439,12 @@ export default function CustomerTableMenu() {
     showToast(lang === "hi" ? "कार्ट खाली कर दिया गया है" : "Cart cleared");
   };
 
-  const updateItemNotes = (itemId: string, notes: string) => {
+  const updateItemNotes = (cartKey: string, notes: string) => {
     setCart((prev) => {
-      if (!prev[itemId]) return prev;
+      if (!prev[cartKey]) return prev;
       return {
         ...prev,
-        [itemId]: { ...prev[itemId], notes },
+        [cartKey]: { ...prev[cartKey], notes },
       };
     });
   };
@@ -388,7 +514,7 @@ export default function CustomerTableMenu() {
   // Cart calculations
   const cartItems = Object.values(cart);
   const cartCount = cartItems.reduce((acc, c) => acc + c.quantity, 0);
-  const subtotal = cartItems.reduce((acc, c) => acc + c.item.price * c.quantity, 0);
+  const subtotal = cartItems.reduce((acc, c) => acc + (c.unitPrice ?? c.item.price) * c.quantity, 0);
   
   // Discount calculation
   let discountAmount = 0;
@@ -413,10 +539,15 @@ export default function CustomerTableMenu() {
       const orderPayloadItems: OrderItem[] = cartItems.map((c) => ({
         menuItemId: c.item.id,
         name: c.item.name,
-        price: c.item.price,
+        price: c.unitPrice ?? c.item.price,
         quantity: c.quantity,
         isVeg: c.item.isVeg,
         notes: c.notes || undefined,
+        variantName: c.variantName || undefined,
+        selectedAddons:
+          c.selectedAddons && c.selectedAddons.length > 0
+            ? c.selectedAddons.map((a) => ({ name: a.name, price: a.price }))
+            : undefined,
       }));
 
       const res = await fetch("/api/orders", {
@@ -462,7 +593,13 @@ export default function CustomerTableMenu() {
   const generateWhatsAppBillUri = (ord: Order) => {
     if (!restaurant) return "#";
     const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
-    const itemsList = ord.items.map((it) => `• ${it.quantity}x ${it.name} (${restaurant.currencySymbol}${it.price * it.quantity})`).join("\n");
+    const itemsList = ord.items.map((it) => {
+      const variantStr = it.variantName ? ` [${it.variantName}]` : "";
+      const addonsStr = it.selectedAddons && it.selectedAddons.length > 0
+        ? `\n   ↳ + ${it.selectedAddons.map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}`
+        : "";
+      return `• ${it.quantity}x ${it.name}${variantStr} (${restaurant.currencySymbol}${it.price * it.quantity})${addonsStr}`;
+    }).join("\n");
     const discountText = ord.discount && ord.discount > 0 ? `\n🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
     const text = `🍽️ *${restaurant.name}*\n` +
       `📍 Table: ${ord.tableNumber}\n` +
@@ -514,17 +651,19 @@ export default function CustomerTableMenu() {
   // Recommended Add-ons (Dishes not in cart, e.g. Desserts & Drinks)
   const recommendedAddons = useMemo(() => {
     if (!restaurant) return [];
+    const inCartIds = new Set(Object.values(cart).map((c) => c.item.id));
     return restaurant.menuItems
-      .filter((it) => !cart[it.id] && it.isAvailable && (it.isBestseller || it.categoryId.includes("cat-4") || it.categoryId.includes("cat-5") || it.name.toLowerCase().includes("shake") || it.name.toLowerCase().includes("cooler")))
+      .filter((it) => !inCartIds.has(it.id) && it.isAvailable && (it.isBestseller || it.categoryId.includes("cat-4") || it.categoryId.includes("cat-5") || it.name.toLowerCase().includes("shake") || it.name.toLowerCase().includes("cooler")))
       .slice(0, 4);
   }, [restaurant, cart]);
 
-  // Filtered Menu Items
+  // Filtered and Categorically Sorted Menu Items
   const filteredItems = useMemo(() => {
     if (!restaurant) return [];
     const catMap = new Map(restaurant.categories.map((c) => [c.id, c.name.toLowerCase()]));
+    const catOrderMap = new Map(restaurant.categories.map((c, idx) => [c.id, c.sortOrder ?? idx]));
 
-    return restaurant.menuItems.filter((item) => {
+    const items = restaurant.menuItems.filter((item) => {
       // Category filter
       if (selectedCategory !== "all" && item.categoryId !== selectedCategory) return false;
       
@@ -542,6 +681,17 @@ export default function CustomerTableMenu() {
         return matchesName || matchesDesc || matchesCat;
       }
       return true;
+    });
+
+    // Ensure logical menu ordering: Starters -> Main Course -> Breads/Rice -> Beverages -> Desserts
+    // And bestsellers at the top of each category
+    return items.sort((a, b) => {
+      const orderA = catOrderMap.get(a.categoryId) ?? 99;
+      const orderB = catOrderMap.get(b.categoryId) ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      if (a.isBestseller && !b.isBestseller) return -1;
+      if (!a.isBestseller && b.isBestseller) return 1;
+      return 0;
     });
   }, [restaurant, selectedCategory, dietaryFilter, searchQuery]);
 
@@ -597,6 +747,11 @@ export default function CustomerTableMenu() {
   }
 
   if (error || !restaurant) {
+    if (slug === "grand-spice") {
+      setRestaurant(DEMO_RESTAURANT);
+      setError(null);
+      return null;
+    }
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-50">
         <UtensilsCrossed className="w-16 h-16 text-slate-300 mb-4" />
@@ -617,9 +772,9 @@ export default function CustomerTableMenu() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
-      {/* Demo View Banner */}
+      {/* Demo View Banner (Scrolls naturally with page) */}
       {slug === "grand-spice" && (
-        <div className="bg-slate-900 text-slate-200 text-xs py-2 px-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
+        <div className="bg-slate-900 text-slate-200 text-xs py-2 px-4 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-bold text-white text-[11px]">📱 Diner QR Ordering (Table 4 Demo)</span>
@@ -637,8 +792,8 @@ export default function CustomerTableMenu() {
         </div>
       )}
 
-      {/* Header Banner */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
+      {/* Restaurant Hero Info & Waiter Quick Buttons (Scrolls away naturally) */}
+      <section className="bg-white border-b border-slate-200/70">
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
@@ -718,33 +873,54 @@ export default function CustomerTableMenu() {
               </span>
             </button>
           </div>
+        </div>
+      </section>
 
-          {/* Search Bar with Clear Button */}
-          <div className="relative mt-3">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder={t.searchPlaceholder}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-100 text-slate-800 placeholder-slate-400 pl-9 pr-8 py-2 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition border border-slate-200/50"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+      {/* Smart Compact Sticky Filter Bar (Docks cleanly at top when scrolling) */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md shadow-xs border-b border-slate-200">
+        <div className="max-w-md mx-auto px-4 pt-2.5 pb-2 space-y-2">
+          {/* Search Bar + Live Orders Quick Access */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder={t.searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-100 text-slate-800 placeholder-slate-400 pl-9 pr-8 py-2 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition border border-slate-200/50"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Orders Tracker Button when scrolled */}
+            <button
+              onClick={() => setIsOrdersOpen(true)}
+              className="relative p-2 rounded-xl bg-orange-50 text-orange-600 hover:bg-orange-100 transition border border-orange-200/60 shrink-0"
+              title="View Table Orders"
+            >
+              <Clock className="w-4 h-4" />
+              {tableOrders.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-orange-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                  {tableOrders.length}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* 3-Way Dietary Filter (All / Veg 🟢 / Non-Veg 🔴) */}
-          <div className="grid grid-cols-3 gap-1.5 mt-2.5 p-1 bg-slate-100 rounded-xl">
+          <div className="grid grid-cols-3 gap-1 p-0.5 bg-slate-100 rounded-xl">
             <button
               onClick={() => setDietaryFilter("all")}
               className={`py-1 text-xs font-bold rounded-lg transition ${
-                dietaryFilter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                dietaryFilter === "all" ? "bg-white text-slate-900 shadow-xs" : "text-slate-500 hover:text-slate-700"
               }`}
             >
               {t.dietAll}
@@ -752,7 +928,7 @@ export default function CustomerTableMenu() {
             <button
               onClick={() => setDietaryFilter("veg")}
               className={`py-1 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition ${
-                dietaryFilter === "veg" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                dietaryFilter === "veg" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-700"
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400 border border-white" />
@@ -761,7 +937,7 @@ export default function CustomerTableMenu() {
             <button
               onClick={() => setDietaryFilter("non_veg")}
               className={`py-1 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition ${
-                dietaryFilter === "non_veg" ? "bg-red-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-700"
+                dietaryFilter === "non_veg" ? "bg-red-600 text-white shadow-xs" : "text-slate-500 hover:text-slate-700"
               }`}
             >
               <span className="w-2 h-2 rounded-full bg-red-400 border border-white" />
@@ -771,12 +947,12 @@ export default function CustomerTableMenu() {
         </div>
 
         {/* Categories Horizontal Scroll */}
-        <div className="border-t border-slate-100 overflow-x-auto no-scrollbar py-2 px-4 max-w-md mx-auto flex items-center gap-2">
+        <div className="border-t border-slate-100 overflow-x-auto no-scrollbar py-2 px-4 max-w-md mx-auto flex items-center gap-1.5">
           <button
             onClick={() => setSelectedCategory("all")}
             className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 ${
               selectedCategory === "all"
-                ? "bg-slate-900 text-white shadow-sm"
+                ? "bg-slate-900 text-white shadow-xs"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
@@ -789,7 +965,7 @@ export default function CustomerTableMenu() {
               onClick={() => setSelectedCategory(cat.id)}
               className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition ${
                 selectedCategory === cat.id
-                  ? "bg-orange-600 text-white shadow-sm"
+                  ? "bg-orange-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               }`}
             >
@@ -801,8 +977,8 @@ export default function CustomerTableMenu() {
         </div>
       </header>
 
-      {/* Dishes List */}
-      <main className="max-w-md mx-auto px-4 mt-4 space-y-3">
+      {/* Dishes List with Anti-Clip Scroll Margins */}
+      <main className="max-w-md mx-auto px-4 pt-3.5 pb-32 space-y-3.5">
         {filteredItems.length === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center border border-slate-200/80 my-8">
             <UtensilsCrossed className="w-10 h-10 text-slate-300 mx-auto mb-2" />
@@ -822,16 +998,31 @@ export default function CustomerTableMenu() {
             )}
           </div>
         ) : (
-          filteredItems.map((item) => {
-            const inCartQty = cart[item.id]?.quantity || 0;
+          filteredItems.map((item, idx) => {
+            const inCartQty = getItemCartQuantity(item.id);
+            const hasCustomisation = Boolean((item.variants && item.variants.length > 0) || (item.addons && item.addons.length > 0));
+            const prevItem = idx > 0 ? filteredItems[idx - 1] : null;
+            const isNewCategory = selectedCategory === "all" && !searchQuery.trim() && (!prevItem || prevItem.categoryId !== item.categoryId);
+            const currentCat = restaurant.categories.find((c) => c.id === item.categoryId);
 
             return (
-              <div
-                key={item.id}
-                className={`bg-white rounded-2xl p-3.5 border transition shadow-sm flex gap-3.5 ${
-                  item.isAvailable ? "border-slate-200/70" : "border-slate-200 opacity-60 bg-slate-50"
-                }`}
-              >
+              <Fragment key={item.id}>
+                {isNewCategory && currentCat && (
+                  <div className="pt-2 pb-0.5 flex items-center justify-between border-b border-slate-200/70 mb-1 scroll-mt-28">
+                    <div className="flex items-center gap-1.5 font-extrabold text-xs uppercase tracking-wider text-slate-700">
+                      <span>{currentCat.icon}</span>
+                      <span>{currentCat.name}</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {categoryCounts[currentCat.id] || 0}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={`bg-white rounded-2xl p-3.5 border transition shadow-xs flex gap-3.5 scroll-mt-32 ${
+                    item.isAvailable ? "border-slate-200/80 hover:border-orange-200" : "border-slate-200 opacity-60 bg-slate-50"
+                  }`}
+                >
                 {/* Food Image */}
                 <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0">
                   <img
@@ -899,14 +1090,41 @@ export default function CustomerTableMenu() {
                   </div>
 
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                    <span className="text-sm font-extrabold text-slate-900">
-                      {restaurant.currencySymbol}
-                      {item.price}
-                    </span>
+                    {item.variants && item.variants.length > 0 ? (
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">
+                          {t.fromPrice}
+                        </span>
+                        <span className="text-sm font-black text-slate-900 leading-tight">
+                          {restaurant.currencySymbol}
+                          {Math.min(...item.variants.map((v) => v.price))}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-extrabold text-slate-900">
+                        {restaurant.currencySymbol}
+                        {item.price}
+                      </span>
+                    )}
 
                     {/* Add Button or Stepper */}
                     {item.isAvailable ? (
-                      inCartQty === 0 ? (
+                      hasCustomisation ? (
+                        <div className="flex items-center gap-1.5">
+                          {inCartQty > 0 && (
+                            <span className="text-[10px] font-black bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-md border border-orange-200">
+                              {inCartQty} {lang === "hi" ? "कार्ट में" : "in cart"}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => openCustomiseModal(item)}
+                            className="bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 font-extrabold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition active:scale-95 shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{t.customise}</span>
+                          </button>
+                        </div>
+                      ) : inCartQty === 0 ? (
                         <button
                           onClick={() => addToCart(item)}
                           className="bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition active:scale-95"
@@ -936,8 +1154,9 @@ export default function CustomerTableMenu() {
                   </div>
                 </div>
               </div>
-            );
-          })
+            </Fragment>
+          );
+        })
         )}
       </main>
 
@@ -998,44 +1217,61 @@ export default function CustomerTableMenu() {
 
             {/* Cart Items List */}
             <div className="p-4 overflow-y-auto space-y-3.5 flex-1 divide-y divide-slate-100">
-              {cartItems.map(({ item, quantity, notes }) => (
-                <div key={item.id} className="pt-3 first:pt-0">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-3 h-3 border-2 rounded-sm flex items-center justify-center ${
-                          item.isVeg ? "border-emerald-600" : "border-red-600"
-                        }`}
-                      >
+              {cartItems.map(({ cartKey, item, quantity, notes, variantName, selectedAddons, unitPrice }) => (
+                <div key={cartKey} className="pt-3 first:pt-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span
-                          className={`w-1 h-1 rounded-full ${
-                            item.isVeg ? "bg-emerald-600" : "bg-red-600"
+                          className={`w-3 h-3 border-2 rounded-sm flex items-center justify-center shrink-0 ${
+                            item.isVeg ? "border-emerald-600" : "border-red-600"
                           }`}
-                        />
-                      </span>
-                      <span className="font-semibold text-slate-800 text-xs">{item.name}</span>
+                        >
+                          <span
+                            className={`w-1 h-1 rounded-full ${
+                              item.isVeg ? "bg-emerald-600" : "bg-red-600"
+                            }`}
+                          />
+                        </span>
+                        <span className="font-bold text-slate-800 text-xs">{item.name}</span>
+                        {variantName && (
+                          <span className="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded border border-orange-200">
+                            {variantName}
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedAddons && selectedAddons.length > 0 && (
+                        <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
+                          + {selectedAddons.map((a) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                        </div>
+                      )}
+
+                      <div className="text-[10px] text-slate-400 pl-4 mt-0.5 font-medium">
+                        {restaurant.currencySymbol}{unitPrice} each
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 shrink-0">
                       <div className="flex items-center bg-slate-100 rounded-lg font-bold text-xs">
                         <button
-                          onClick={() => removeFromCart(item.id)}
-                          className="px-2 py-1 text-slate-600 hover:text-slate-900"
+                          onClick={() => decrementCartKey(cartKey)}
+                          className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
                         <span className="px-1.5 text-slate-900">{quantity}</span>
                         <button
-                          onClick={() => addToCart(item)}
-                          className="px-2 py-1 text-slate-600 hover:text-slate-900"
+                          onClick={() => incrementCartKey(cartKey)}
+                          className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
                         >
                           <Plus className="w-3 h-3" />
                         </button>
                       </div>
 
-                      <span className="text-xs font-bold text-slate-900 w-14 text-right">
+                      <span className="text-xs font-black text-slate-900 w-14 text-right">
                         {restaurant.currencySymbol}
-                        {item.price * quantity}
+                        {unitPrice * quantity}
                       </span>
                     </div>
                   </div>
@@ -1045,7 +1281,7 @@ export default function CustomerTableMenu() {
                     type="text"
                     placeholder={t.cookingNotePlaceholder}
                     value={notes}
-                    onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                    onChange={(e) => updateItemNotes(cartKey, e.target.value)}
                     className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -1356,14 +1592,27 @@ export default function CustomerTableMenu() {
                       {/* Items */}
                       <div className="space-y-1.5 my-3 text-xs">
                         {order.items.map((it, idx) => (
-                          <div key={idx} className="flex justify-between text-slate-800">
-                            <span>
-                              {it.quantity}x {it.name}
-                            </span>
-                            <span className="font-semibold">
-                              {restaurant.currencySymbol}
-                              {it.price * it.quantity}
-                            </span>
+                          <div key={idx} className="text-slate-800">
+                            <div className="flex justify-between items-start">
+                              <span className="font-semibold flex items-center gap-1.5 flex-wrap">
+                                <span>{it.quantity}x</span>
+                                <span>{it.name}</span>
+                                {it.variantName && (
+                                  <span className="text-[10px] font-black bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded border border-orange-200">
+                                    {it.variantName}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="font-bold">
+                                {restaurant.currencySymbol}
+                                {it.price * it.quantity}
+                              </span>
+                            </div>
+                            {it.selectedAddons && it.selectedAddons.length > 0 && (
+                              <div className="text-[10px] text-slate-500 pl-4 mt-0.5">
+                                + {it.selectedAddons.map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
