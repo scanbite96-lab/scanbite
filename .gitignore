@@ -36,4 +36,5 @@ cloudflared.exe
 *.log
 public-url.txt
 scratch/
+.agents/teamwork/
 
