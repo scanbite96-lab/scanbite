@@ -70,6 +70,31 @@ export const DEMO_RESTAURANT: Restaurant = {
       ],
     },
     {
+      id: "item-pizza-1",
+      categoryId: "cat-1",
+      name: "Farmhouse Cheese & Capsicum Pizza",
+      description: "Fresh hand-stretched thin crust loaded with mozzarella, crunchy capsicum, sweet corn, and herbs.",
+      price: 280,
+      isVeg: true,
+      isAvailable: true,
+      isBestseller: true,
+      spiceLevel: 1,
+      prepTimeMinutes: 15,
+      stockCount: 20,
+      lowStockThreshold: 5,
+      imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80",
+      variants: [
+        { id: "piz-v1", name: "Regular 7\"", price: 190 },
+        { id: "piz-v2", name: "Medium 10\"", price: 320 },
+        { id: "piz-v3", name: "Large 12\"", price: 480 },
+      ],
+      addons: [
+        { id: "piz-a1", name: "Extra Cheese", price: 40 },
+        { id: "piz-a2", name: "Extra Dip", price: 20 },
+        { id: "piz-a3", name: "Cheese Burst Crust", price: 60 },
+      ],
+    },
+    {
       id: "item-3",
       categoryId: "cat-1",
       name: "Murgh Malai Tikka",
@@ -206,7 +231,7 @@ export const DEMO_RESTAURANT: Restaurant = {
       imageUrl: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=500&auto=format&fit=crop&q=80",
       variants: [
         { id: "var-vb-half", name: "Half Plate", price: 180 },
-        { id: "var-vb-full", name: "Full Plate", price: 290 },
+        { id: "var-vb-full", name: "Full Plate", price: 320 },
       ],
       addons: [
         { id: "add-vb-raita", name: "Extra Boondi Raita", price: 35 },
@@ -567,14 +592,45 @@ export function resetDemoOrders(): Order[] {
   return [...demoOrdersStore];
 }
 
-export function getDemoTableOrders(tableId: string): Order[] {
+export function getDemoTableOrders(tableId: string, activeOnly: boolean = false): Order[] {
   const cleanNum = tableId.replace(/\D/g, "");
   return demoOrdersStore.filter((o) => {
-    return (
+    const matches = (
       o.tableId === tableId ||
       o.tableNumber.toLowerCase() === tableId.toLowerCase() ||
       (cleanNum && o.tableNumber.toLowerCase().includes(cleanNum))
     );
+    if (!matches) return false;
+    if (activeOnly) {
+      return o.status !== "completed" && o.status !== "cancelled";
+    }
+    return true;
+  });
+}
+
+export function vacateDemoTable(tableId: string): void {
+  const cleanNum = tableId.replace(/\D/g, "");
+  demoOrdersStore = demoOrdersStore.map((o) => {
+    const matches = (
+      o.tableId === tableId ||
+      o.tableNumber.toLowerCase() === tableId.toLowerCase() ||
+      (cleanNum && o.tableNumber.toLowerCase().includes(cleanNum))
+    );
+    if (matches && o.status !== "cancelled") {
+      return { ...o, status: "completed", paymentStatus: "paid", updatedAt: new Date().toISOString() };
+    }
+    return o;
+  });
+
+  demoServiceRequestsStore = demoServiceRequestsStore.map((r) => {
+    const matches = (
+      r.tableId === tableId ||
+      (cleanNum && r.tableNumber.toLowerCase().includes(cleanNum))
+    );
+    if (matches) {
+      return { ...r, status: "attended" };
+    }
+    return r;
   });
 }
 

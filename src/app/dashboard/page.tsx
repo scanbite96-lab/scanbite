@@ -101,6 +101,7 @@ export default function RestaurantDashboard() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
 
   // Quick Dish Stock Modal for Kitchen Staff
   const [isStaffStockModalOpen, setIsStaffStockModalOpen] = useState(false);
@@ -193,6 +194,14 @@ export default function RestaurantDashboard() {
   const [newDishStock, setNewDishStock] = useState("-1");
   const [newDishLowThreshold, setNewDishLowThreshold] = useState(5);
   const [isSubmittingDish, setIsSubmittingDish] = useState(false);
+
+  // Dish Customisation Form State (Portion Sizes & Add-ons)
+  const [newDishVariants, setNewDishVariants] = useState<Array<{ name: string; price: number }>>([]);
+  const [newDishAddons, setNewDishAddons] = useState<Array<{ name: string; price: number }>>([]);
+  const [variantInputName, setVariantInputName] = useState("");
+  const [variantInputPrice, setVariantInputPrice] = useState("");
+  const [addonInputName, setAddonInputName] = useState("");
+  const [addonInputPrice, setAddonInputPrice] = useState("");
 
   // Settings Form State
   const [settingsName, setSettingsName] = useState("");
@@ -758,6 +767,33 @@ export default function RestaurantDashboard() {
     }
   };
 
+  // Vacate and reset table for next guests
+  const handleVacateTable = async (tableId: string, tableNumber: string) => {
+    if (!canManageOrders) {
+      showToast("Unauthorized: You do not have permission to manage tables.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "vacate_table",
+          restaurantId: restaurant?.id,
+          tableId,
+        }),
+      });
+      if (res.ok) {
+        showToast(`${tableNumber} cleared & ready for next guests! 🧹`, "success");
+        loadDashboardData();
+      } else {
+        showToast("Failed to vacate table.", "error");
+      }
+    } catch {
+      showToast("Network error vacating table.", "error");
+    }
+  };
+
   // Delete Dish Handler
   const handleDeleteDish = async (itemId: string, dishName: string) => {
     if (!isOwner) {
@@ -1201,6 +1237,8 @@ export default function RestaurantDashboard() {
           imageUrl: newDishImage.trim(),
           stockCount: newDishStock ? Number(newDishStock) : -1,
           lowStockThreshold: Number(newDishLowThreshold) || 5,
+          variants: newDishVariants.length > 0 ? newDishVariants.map((v, i) => ({ id: `v-${Date.now()}-${i}`, ...v })) : undefined,
+          addons: newDishAddons.length > 0 ? newDishAddons.map((a, i) => ({ id: `a-${Date.now()}-${i}`, ...a })) : undefined,
         }),
       });
       if (res.ok) {
@@ -1209,6 +1247,12 @@ export default function RestaurantDashboard() {
         setNewDishPrice("");
         setNewDishDesc("");
         setNewDishImage("");
+        setNewDishVariants([]);
+        setNewDishAddons([]);
+        setVariantInputName("");
+        setVariantInputPrice("");
+        setAddonInputName("");
+        setAddonInputPrice("");
         setIsAddDishOpen(false);
         loadDashboardData();
       } else {
@@ -1634,335 +1678,355 @@ export default function RestaurantDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Interactive Demo Mode Top Banner */}
-      {isDemoMode && (
-        <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 text-white text-xs font-bold py-2.5 px-4 shadow-md flex flex-wrap items-center justify-between gap-2 sticky top-0 z-40 border-b border-orange-400/40">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>🌟 ScanBite Interactive Demo Mode (Grand Spice) • Try advancing orders, managing stock & kitchen!</span>
-          </div>
-          <Link
-            href="/register"
-            className="bg-white text-slate-950 hover:bg-slate-100 px-3 py-1 rounded-lg text-[11px] font-black transition shrink-0 shadow-sm"
-          >
-            Get ScanBite For Your Restaurant →
-          </Link>
-        </div>
-      )}
-
-      {/* Top Navigation Bar */}
-      <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-lg shadow-md shadow-orange-500/30">
-              ⚡
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                {isOwner && availableRestaurants.length > 1 ? (
-                  <select
-                    value={restaurantSlug}
-                    onChange={(e) => setRestaurantSlug(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm px-2 py-1 rounded-lg focus:outline-none"
-                  >
-                    {availableRestaurants.map((r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <h1 className="font-bold text-base text-white tracking-wide">{restaurant.name}</h1>
-                )}
-
-                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  LIVE
-                </span>
-              </div>
-              <p className="text-xs text-slate-400">
-                {isOwner ? "Owner Executive & Management Command Center" : "Kitchen Display & Floor Operations"}
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation Tabs - Available for Owner and Delegated Staff */}
-          {isOwner ? (
-            <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-              <button
-                onClick={() => setActiveTab("analytics")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "analytics"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <BarChart3 className="w-4 h-4" />
-                <span>Overview</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("kds")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "kds"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <ChefHat className="w-4 h-4" />
-                <span>Live Kitchen</span>
-                {filteredOrders.length > 0 && (
-                  <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
-                    {filteredOrders.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab("menu")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "menu"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <Boxes className="w-4 h-4" />
-                <span>Menu &amp; Stock</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("tables")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "tables"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <QrCode className="w-4 h-4" />
-                <span>Tables &amp; QRs</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("staff")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "staff"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>Staff &amp; Roles</span>
-                {staffList.length > 0 && (
-                  <span className="bg-slate-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                    {staffList.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === "settings"
-                    ? "bg-orange-500 text-white shadow"
-                    : "text-slate-300 hover:text-white hover:bg-slate-700/50"
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                <span>Settings &amp; PIN</span>
-              </button>
-            </nav>
-          ) : (
+      {/* ===================== UNIFIED STICKY TOP CONTAINER ===================== */}
+      <div className="sticky top-0 z-40 bg-slate-900 shadow-md">
+        {/* 1. Interactive Demo Mode Top Banner */}
+        {isDemoMode && (
+          <div className="bg-gradient-to-r from-orange-600 via-amber-600 to-orange-600 text-white text-xs font-bold py-2 px-4 border-b border-orange-400/30 flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div className="flex items-center gap-2">
-              <nav className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-                {canManageOrders && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-[11px] sm:text-xs">🌟 ScanBite Interactive Demo Mode (Grand Spice) • Try advancing orders, managing stock & kitchen!</span>
+            </div>
+            <Link
+              href="/register"
+              className="bg-white text-slate-950 hover:bg-slate-100 px-2.5 py-0.5 rounded-lg text-[11px] font-black transition shrink-0 shadow-xs"
+            >
+              Get ScanBite For Your Restaurant →
+            </Link>
+          </div>
+        )}
+
+        {/* 2. Main Navigation Header */}
+        <header className="bg-slate-900 text-white border-b border-slate-800">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+            {/* Row 1: Brand Info & Top Action Controls */}
+            <div className="py-2.5 flex items-center justify-between gap-3 border-b border-slate-800/80">
+              {/* Brand & Identity */}
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-base shadow-md shadow-orange-500/30 shrink-0">
+                  ⚡
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {isOwner && availableRestaurants.length > 1 ? (
+                      <select
+                        value={restaurantSlug}
+                        onChange={(e) => setRestaurantSlug(e.target.value)}
+                        className="bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm px-2 py-1 rounded-lg focus:outline-none"
+                      >
+                        {availableRestaurants.map((r) => (
+                          <option key={r.slug} value={r.slug}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <h1 className="font-bold text-sm sm:text-base text-white tracking-wide truncate">{restaurant.name}</h1>
+                    )}
+
+                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+                      LIVE
+                    </span>
+                  </div>
+                  <p className="hidden md:block text-[11px] text-slate-400 truncate">
+                    {isOwner ? "Owner Executive & Management Command Center" : "Kitchen Display & Floor Operations"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Controls & User Account */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Test Sound */}
+                <button
+                  onClick={() => {
+                    if (!soundEnabled) setSoundEnabled(true);
+                    playNewOrderChime();
+                  }}
+                  className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-orange-400 text-xs font-bold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer"
+                  title="Test Sound Chime (Unlocks AudioContext in Browser)"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Test Sound</span>
+                </button>
+
+                {/* Sound Toggle */}
+                <button
+                  onClick={() => {
+                    setSoundEnabled(!soundEnabled);
+                    if (!soundEnabled) playNewOrderChime();
+                  }}
+                  className={`p-1.5 sm:p-2 rounded-xl border transition cursor-pointer ${
+                    soundEnabled
+                      ? "bg-orange-950/60 border-orange-500/40 text-orange-400"
+                      : "bg-slate-800 border-slate-700 text-slate-400"
+                  }`}
+                  title={soundEnabled ? "Sound Alerts Active (Click to mute)" : "Sound Muted (Click to enable)"}
+                >
+                  {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </button>
+
+                {/* Diner Menu Preview Link */}
+                <a
+                  href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition whitespace-nowrap"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
+                </a>
+
+                {/* Staff Sold Out Modal Button (if staff floor mode) */}
+                {!isOwner && canManageMenu && (
+                  <button
+                    onClick={() => setIsStaffStockModalOpen(true)}
+                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap"
+                    title="Mark Finished Dishes Out of Stock"
+                  >
+                    <Ban className="w-3.5 h-3.5 text-rose-400" />
+                    <span className="hidden sm:inline">Mark Sold Out</span>
+                  </button>
+                )}
+
+                {/* User Account Info & Sign Out */}
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+                  <div className="hidden sm:flex flex-col text-right">
+                    <span className="text-[11px] font-bold text-white flex items-center justify-end gap-1 whitespace-nowrap">
+                      {isOwner ? (
+                        <span className="text-amber-400 font-extrabold flex items-center gap-1">
+                          👑 {authUser?.ownerName || restaurant.name} (Owner)
+                        </span>
+                      ) : (
+                        <span className="text-cyan-400 font-extrabold flex items-center gap-1">
+                          👨‍🍳 {authUser?.staffName || "Staff"}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">
+                      {isOwner ? (authUser?.ownerEmail || restaurant.slug) : "Floor Mode"}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition shadow-sm active:scale-95 whitespace-nowrap cursor-pointer"
+                    title="Sign Out / Lock Dashboard"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Navigation Tabs Bar - Full horizontal row with zero wrapping and smooth scroll */}
+            <div className="py-1.5 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+              {isOwner ? (
+                <nav className="flex items-center gap-1.5 py-0.5">
+                  <button
+                    onClick={() => setActiveTab("analytics")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeTab === "analytics"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    <span>Overview</span>
+                  </button>
+
                   <button
                     onClick={() => setActiveTab("kds")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
                       activeTab === "kds"
-                        ? "bg-orange-500 text-white shadow"
-                        : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
                     }`}
                   >
                     <ChefHat className="w-4 h-4" />
-                    <span>Kitchen KDS</span>
+                    <span>Live Kitchen</span>
                     {filteredOrders.length > 0 && (
-                      <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold">
+                      <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ml-0.5">
                         {filteredOrders.length}
                       </span>
                     )}
                   </button>
-                )}
-                {canManageMenu && (
+
                   <button
                     onClick={() => setActiveTab("menu")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
                       activeTab === "menu"
-                        ? "bg-orange-500 text-white shadow"
-                        : "text-slate-300 hover:text-white hover:bg-slate-700/50"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
                     }`}
                   >
                     <Boxes className="w-4 h-4" />
                     <span>Menu &amp; Stock</span>
                   </button>
-                )}
-              </nav>
 
-              <div className="bg-amber-950/60 border border-amber-500/40 text-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs">
-                <ChefHat className="w-4 h-4 text-amber-400" />
-                <span>{authUser?.staffName || "Staff"} ({authUser?.staffRole?.toUpperCase() || "STAFF"})</span>
-              </div>
+                  <button
+                    onClick={() => setActiveTab("tables")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeTab === "tables"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Tables &amp; QRs</span>
+                  </button>
 
-              {canManageMenu && (
-                <button
-                  onClick={() => setIsStaffStockModalOpen(true)}
-                  className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs"
-                  title="Mark Finished Dishes Out of Stock"
-                >
-                  <Ban className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Mark Sold Out</span>
-                </button>
+                  <button
+                    onClick={() => setActiveTab("staff")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeTab === "staff"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Staff &amp; Roles</span>
+                    {staffList.length > 0 && (
+                      <span className="bg-slate-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
+                        {staffList.length}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("settings")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                      activeTab === "settings"
+                        ? "bg-orange-500 text-white shadow-sm"
+                        : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                    }`}
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>Settings &amp; PIN</span>
+                  </button>
+                </nav>
+              ) : (
+                <div className="flex items-center gap-2 py-0.5">
+                  <nav className="flex items-center gap-1.5">
+                    {canManageOrders && (
+                      <button
+                        onClick={() => setActiveTab("kds")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                          activeTab === "kds"
+                            ? "bg-orange-500 text-white shadow-sm"
+                            : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <ChefHat className="w-4 h-4" />
+                        <span>Kitchen KDS</span>
+                        {filteredOrders.length > 0 && (
+                          <span className="bg-white text-slate-900 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ml-0.5">
+                            {filteredOrders.length}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                    {canManageMenu && (
+                      <button
+                        onClick={() => setActiveTab("menu")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                          activeTab === "menu"
+                            ? "bg-orange-500 text-white shadow-sm"
+                            : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <Boxes className="w-4 h-4" />
+                        <span>Menu &amp; Stock</span>
+                      </button>
+                    )}
+                  </nav>
+
+                  <div className="bg-amber-950/60 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                    <ChefHat className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{authUser?.staffName || "Staff"} ({authUser?.staffRole?.toUpperCase() || "STAFF"})</span>
+                  </div>
+                </div>
               )}
             </div>
-          )}
+          </div>
+        </header>
 
-          {/* Quick Sound Toggle & Account Controls */}
-          <div className="flex items-center gap-2">
+        {/* 3. Live System Broadcast Banner */}
+        {restaurant.platformSetting?.broadcastMessage && !isBroadcastDismissed && (
+          <div className="bg-gradient-to-r from-orange-950 via-amber-950 to-slate-900 border-b border-orange-500/30 text-orange-200 px-4 py-2 text-xs font-semibold flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-orange-400 animate-pulse shrink-0" />
+              <span>
+                <strong className="text-orange-400 uppercase tracking-wider mr-1.5">📢 System Broadcast:</strong>
+                {restaurant.platformSetting.broadcastMessage}
+              </span>
+            </div>
             <button
-              onClick={() => {
-                if (!soundEnabled) setSoundEnabled(true);
-                playNewOrderChime();
-              }}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-orange-400 text-xs font-bold flex items-center gap-1 transition"
-              title="Test Sound Chime (Unlocks AudioContext in Browser)"
+              onClick={() => setIsBroadcastDismissed(true)}
+              className="text-orange-400/80 hover:text-white p-1 rounded-md transition cursor-pointer"
+              title="Dismiss Broadcast"
             >
-              <Volume2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Test Sound</span>
+              <X className="w-3.5 h-3.5" />
             </button>
+          </div>
+        )}
 
-            <button
-              onClick={() => {
-                setSoundEnabled(!soundEnabled);
-                if (!soundEnabled) playNewOrderChime();
-              }}
-              className={`p-2 rounded-xl border transition ${
-                soundEnabled
-                  ? "bg-orange-950/60 border-orange-500/40 text-orange-400"
-                  : "bg-slate-800 border-slate-700 text-slate-400"
-              }`}
-              title={soundEnabled ? "Sound Alerts Active (Click to mute)" : "Sound Muted (Click to enable)"}
-            >
-              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            </button>
+        {/* 4. Platform Maintenance Mode Alert */}
+        {restaurant.platformSetting?.isMaintenance && (
+          <div className="bg-amber-600 text-slate-950 px-4 py-1.5 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+            <Wrench className="w-3.5 h-3.5 shrink-0" />
+            <span>🛠️ Platform Maintenance Mode is currently active across the system. Core updates in progress.</span>
+          </div>
+        )}
 
-            <a
-              href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
-              <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
-            </a>
+        {/* 5. Account Suspended Alert */}
+        {restaurant.isActive === false && (
+          <div className="bg-rose-600 text-white p-2.5 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+            <Ban className="w-3.5 h-3.5 shrink-0" />
+            <span>⚠️ Account Suspended: Customer digital QR ordering is currently disabled for this restaurant. Please contact platform admin to renew subscription.</span>
+          </div>
+        )}
 
-            {/* User Account Info & Sign Out */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-              <div className="hidden sm:flex flex-col text-right">
-                <span className="text-[11px] font-bold text-white flex items-center justify-end gap-1">
-                  {isOwner ? (
-                    <span className="text-amber-400 font-extrabold flex items-center gap-1">
-                      👑 {authUser?.ownerName || restaurant.name} (Owner)
-                    </span>
-                  ) : (
-                    <span className="text-cyan-400 font-extrabold flex items-center gap-1">
-                      👨‍🍳 Kitchen Staff
-                    </span>
-                  )}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {isOwner ? (authUser?.ownerEmail || restaurant.slug) : "Floor Mode"}
-                </span>
-              </div>
+        {/* 6. Plan Expired Alert */}
+        {restaurant.planExpiresAt && new Date(restaurant.planExpiresAt) < new Date() && (
+          <div className="bg-amber-600 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
+            <Clock className="w-3.5 h-3.5 shrink-0 animate-pulse" />
+            <span>⚠️ Plan Expired: Subscription ended on {new Date(restaurant.planExpiresAt).toLocaleDateString()}. Please renew to avoid disruptions in digital table ordering.</span>
+          </div>
+        )}
 
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition shadow-sm active:scale-95"
-                title="Sign Out / Lock Dashboard"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </button>
+        {/* 7. Real-time Waiter Calls Bar */}
+        {pendingRequests.length > 0 && (
+          <div className="bg-amber-500 text-slate-900 px-4 py-1.5 shadow-xs font-semibold text-xs flex items-center justify-between border-b border-amber-600">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <span className="flex items-center gap-1 font-extrabold uppercase bg-slate-900 text-amber-400 px-2 py-0.5 rounded text-[10px] shrink-0">
+                <Bell className="w-3 h-3 animate-bounce" /> ATTENTION REQUIRED:
+              </span>
+              {pendingRequests.map((req) => (
+                <div
+                  key={req.id}
+                  className="inline-flex items-center gap-2 bg-white/90 px-3 py-0.5 rounded-full text-slate-900 shadow-xs shrink-0"
+                >
+                  <span className="whitespace-nowrap">
+                    <strong>{req.tableNumber}</strong>: {
+                      req.type === "water" ? "💧 Needs Water" : 
+                      req.type === "bill" ? "🧾 Requested Bill" : 
+                      req.type === "cleaning" ? "🧹 Clean Table" : 
+                      "🛎️ Called Waiter"
+                    }
+                  </span>
+                  <button
+                    onClick={() => handleAttendRequest(req.id)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full cursor-pointer"
+                  >
+                    Clear ✓
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
-      </header>
-
-      {/* Live System Broadcast Banner */}
-      {restaurant.platformSetting?.broadcastMessage && (
-        <div className="bg-gradient-to-r from-orange-950 via-amber-950 to-slate-900 border-b border-orange-500/40 text-orange-200 px-4 py-2.5 text-xs font-semibold flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-2">
-            <Megaphone className="w-4 h-4 text-orange-400 animate-pulse flex-shrink-0" />
-            <span>
-              <strong className="text-orange-400 uppercase tracking-wider mr-1.5">📢 System Broadcast:</strong>
-              {restaurant.platformSetting.broadcastMessage}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Platform Maintenance Mode Alert */}
-      {restaurant.platformSetting?.isMaintenance && (
-        <div className="bg-amber-600 text-slate-950 px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
-          <Wrench className="w-4 h-4 flex-shrink-0" />
-          <span>🛠️ Platform Maintenance Mode is currently active across the system. Core updates in progress.</span>
-        </div>
-      )}
-
-      {/* Account Suspended Alert */}
-      {restaurant.isActive === false && (
-        <div className="bg-rose-600 text-white p-3 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
-          <Ban className="w-4 h-4 flex-shrink-0" />
-          <span>⚠️ Account Suspended: Customer digital QR ordering is currently disabled for this restaurant. Please contact platform admin to renew subscription.</span>
-        </div>
-      )}
-
-      {/* Plan Expired Alert */}
-      {restaurant.planExpiresAt && new Date(restaurant.planExpiresAt) < new Date() && (
-        <div className="bg-amber-600 text-white px-4 py-2.5 text-center text-xs font-bold flex items-center justify-center gap-2 shadow-inner">
-          <Clock className="w-4 h-4 flex-shrink-0 animate-pulse" />
-          <span>⚠️ Plan Expired: Subscription ended on {new Date(restaurant.planExpiresAt).toLocaleDateString()}. Please renew to avoid disruptions in digital table ordering.</span>
-        </div>
-      )}
-
-      {/* Real-time Waiter Calls Bar */}
-      {pendingRequests.length > 0 && (
-        <div className="bg-amber-500 text-slate-900 px-4 py-2 shadow-sm font-semibold text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            <span className="flex items-center gap-1 font-extrabold uppercase bg-slate-900 text-amber-400 px-2 py-0.5 rounded text-[10px]">
-              <Bell className="w-3 h-3 animate-bounce" /> ATTENTION REQUIRED:
-            </span>
-            {pendingRequests.map((req) => (
-              <div
-                key={req.id}
-                className="inline-flex items-center gap-2 bg-white/90 px-3 py-1 rounded-full text-slate-900 shadow-sm"
-              >
-                <span>
-                  <strong>{req.tableNumber}</strong>: {
-                    req.type === "water" ? "💧 Needs Water" : 
-                    req.type === "bill" ? "🧾 Requested Bill" : 
-                    req.type === "cleaning" ? "🧹 Clean Table" : 
-                    "🛎️ Called Waiter"
-                  }
-                </span>
-                <button
-                  onClick={() => handleAttendRequest(req.id)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"
-                >
-                  Clear ✓
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Main Workspace Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
@@ -2021,11 +2085,11 @@ export default function RestaurantDashboard() {
             </div>
 
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar shrink-0">
                 <button
                   onClick={() => setKdsFilter("active")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "active" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2033,7 +2097,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("pending")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "pending" ? "bg-amber-500 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2041,7 +2105,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("cooking")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "cooking" ? "bg-orange-500 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2049,7 +2113,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("ready")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "ready" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2057,7 +2121,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("served")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "served" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2065,7 +2129,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("unpaid")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "unpaid" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2073,7 +2137,7 @@ export default function RestaurantDashboard() {
                 </button>
                 <button
                   onClick={() => setKdsFilter("all")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                     kdsFilter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -2081,9 +2145,9 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
 
-              {/* KDS Search Input & Reset Demo Orders */}
-              <div className="flex items-center gap-2">
-                <div className="relative min-w-[200px]">
+              {/* KDS Search Input, Reset Demo Orders & Live Sync Indicator */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+                <div className="relative min-w-[180px] sm:min-w-[220px] flex-1 sm:flex-initial">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
@@ -2095,7 +2159,7 @@ export default function RestaurantDashboard() {
                   {kdsSearch && (
                     <button
                       onClick={() => setKdsSearch("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -2105,18 +2169,18 @@ export default function RestaurantDashboard() {
                 {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
                   <button
                     onClick={handleResetDemoOrders}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer shrink-0"
                     title="Reload 4 active demo orders in kitchen (Pending, Cooking, Ready)"
                   >
                     <RefreshCw className="w-3 h-3" />
                     <span>Reset Demo Tickets</span>
                   </button>
                 )}
-              </div>
 
-              <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Auto-syncing 4s • Chime {soundEnabled ? "ON 🔔" : "MUTED"}</span>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap pl-2 border-l border-slate-200 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Auto-sync 4s • Chime {soundEnabled ? "ON 🔔" : "MUTED"}</span>
+                </div>
               </div>
             </div>
 
@@ -2347,6 +2411,16 @@ export default function RestaurantDashboard() {
                               <span>{config.nextBtnText}</span>
                             </button>
                           )}
+                          {["served", "completed"].includes(order.status) && (
+                            <button
+                              type="button"
+                              onClick={() => handleVacateTable(order.tableId, order.tableNumber)}
+                              className="py-2.5 px-3 rounded-xl text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition active:scale-95 flex items-center justify-center gap-1 shrink-0"
+                              title="Clear table for next guest"
+                            >
+                              <span>🧹 Vacate</span>
+                            </button>
+                          )}
                           {["pending", "cooking"].includes(order.status) && (
                             <button
                               onClick={() => handleCancelOrder(order.id, order.tableNumber)}
@@ -2516,8 +2590,30 @@ export default function RestaurantDashboard() {
                               className="w-10 h-10 rounded-lg object-cover bg-slate-100 flex-shrink-0"
                             />
                             <div>
-                              <div className="font-bold text-slate-900">{item.name}</div>
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                                <span>{item.name}</span>
+                                {item.variants && item.variants.length > 0 && (
+                                  <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-extrabold border border-orange-200">
+                                    {item.variants.length} Sizes (Half/Full)
+                                  </span>
+                                )}
+                                {item.addons && item.addons.length > 0 && (
+                                  <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded font-extrabold border border-sky-200">
+                                    {item.addons.length} Extras
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-[11px] text-slate-400 line-clamp-1">{item.description}</div>
+                              {item.variants && item.variants.length > 0 && (
+                                <div className="text-[10px] text-orange-700 font-semibold mt-0.5">
+                                  🍽️ Sizes: {item.variants.map((v) => `${v.name} (₹${v.price})`).join(", ")}
+                                </div>
+                              )}
+                              {item.addons && item.addons.length > 0 && (
+                                <div className="text-[10px] text-sky-700 font-semibold">
+                                  ✨ Extras: {item.addons.map((a) => `${a.name} (+₹${a.price})`).join(", ")}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-4 font-medium text-slate-600">
@@ -2648,6 +2744,21 @@ export default function RestaurantDashboard() {
                 const qrImage = tableQRs[table.id];
                 const dinerUrl = `/r/${restaurant.slug}/t/${table.id}`;
 
+                const cleanNum = table.tableNumber.replace(/\D/g, "");
+                const activeOrders = orders.filter((o) => {
+                  const matches = (
+                    o.tableId === table.id ||
+                    o.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
+                    (cleanNum && o.tableNumber.toLowerCase().includes(cleanNum))
+                  );
+                  return matches && o.status !== "completed" && o.status !== "cancelled";
+                });
+
+                const isOccupied = activeOrders.length > 0;
+                const hasUnpaid = activeOrders.some((o) => o.paymentStatus !== "paid");
+                const isAllServed = isOccupied && activeOrders.every((o) => o.status === "served");
+                const totalActiveAmount = activeOrders.reduce((sum, o) => sum + o.total, 0);
+
                 return (
                   <div
                     key={table.id}
@@ -2660,6 +2771,42 @@ export default function RestaurantDashboard() {
                       </span>
                       <h3 className="text-xl font-black text-slate-900 mt-1">{table.tableNumber}</h3>
                       <p className="text-[11px] text-slate-400">Scan to View Menu & Order</p>
+                    </div>
+
+                    {/* Live Table Status Badge & Vacate Action */}
+                    <div className="no-print my-2 flex flex-col items-center gap-1.5 w-full">
+                      {!isOccupied ? (
+                        <span className="text-[11px] font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                          <span>Vacant / Free (साफ़ टेबल)</span>
+                        </span>
+                      ) : (
+                        <div className="w-full flex flex-col items-center gap-1.5">
+                          <span
+                            className={`text-[11px] font-black px-3 py-1 rounded-full border flex items-center gap-1 ${
+                              !hasUnpaid
+                                ? "bg-purple-50 text-purple-800 border-purple-200"
+                                : isAllServed
+                                ? "bg-rose-50 text-rose-800 border-rose-300 animate-pulse"
+                                : "bg-orange-50 text-orange-800 border-orange-200"
+                            }`}
+                          >
+                            {!hasUnpaid
+                              ? "🟣 Bill Paid (Ready to Vacate)"
+                              : isAllServed
+                              ? `🔴 Bill Pending (${restaurant.currencySymbol}${totalActiveAmount})`
+                              : `🟡 Dining (${activeOrders.length} active order)`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleVacateTable(table.id, table.tableNumber)}
+                            className="w-full py-1.5 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
+                            title="Vacate and reset table for next guest"
+                          >
+                            <span>🧹 Vacate Table (टेबल खाली करें)</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* QR Code Container */}
@@ -3487,6 +3634,130 @@ export default function RestaurantDashboard() {
                   onChange={(e) => setNewDishDesc(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
                 />
+              </div>
+
+              {/* Portion Sizes (Half / Full Plate) */}
+              <div className="p-3 bg-orange-50/60 rounded-xl border border-orange-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span>🍽️</span>
+                    <span>Portion Sizes (Half / Full Plate - Optional)</span>
+                  </label>
+                  <span className="text-[10px] text-orange-600 font-bold">{newDishVariants.length} Added</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Size (e.g. Half Plate)"
+                    value={variantInputName}
+                    onChange={(e) => setVariantInputName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Price (₹)"
+                    value={variantInputPrice}
+                    onChange={(e) => setVariantInputPrice(e.target.value)}
+                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (variantInputName.trim() && variantInputPrice) {
+                        setNewDishVariants((prev) => [
+                          ...prev,
+                          { name: variantInputName.trim(), price: Number(variantInputPrice) },
+                        ]);
+                        setVariantInputName("");
+                        setVariantInputPrice("");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold text-xs shrink-0"
+                  >
+                    + Add Size
+                  </button>
+                </div>
+                {newDishVariants.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {newDishVariants.map((v, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-white text-slate-800 border border-orange-200 shadow-2xs"
+                      >
+                        <span>{v.name}: {restaurant.currencySymbol}{v.price}</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewDishVariants((prev) => prev.filter((_, i) => i !== idx))}
+                          className="hover:text-red-500 font-black"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add-ons / Extras (Extra Cheese, Dip) */}
+              <div className="p-3 bg-sky-50/60 rounded-xl border border-sky-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <span>✨</span>
+                    <span>Add-ons / Extras (Extra Cheese, Dip - Optional)</span>
+                  </label>
+                  <span className="text-[10px] text-sky-600 font-bold">{newDishAddons.length} Added</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add-on (e.g. Extra Cheese)"
+                    value={addonInputName}
+                    onChange={(e) => setAddonInputName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                  />
+                  <input
+                    type="number"
+                    placeholder="+Price (₹)"
+                    value={addonInputPrice}
+                    onChange={(e) => setAddonInputPrice(e.target.value)}
+                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (addonInputName.trim() && addonInputPrice) {
+                        setNewDishAddons((prev) => [
+                          ...prev,
+                          { name: addonInputName.trim(), price: Number(addonInputPrice) },
+                        ]);
+                        setAddonInputName("");
+                        setAddonInputPrice("");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-xs shrink-0"
+                  >
+                    + Add Extra
+                  </button>
+                </div>
+                {newDishAddons.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {newDishAddons.map((a, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-white text-slate-800 border border-sky-200 shadow-2xs"
+                      >
+                        <span>{a.name}: +{restaurant.currencySymbol}{a.price}</span>
+                        <button
+                          type="button"
+                          onClick={() => setNewDishAddons((prev) => prev.filter((_, i) => i !== idx))}
+                          className="hover:text-red-500 font-black"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>

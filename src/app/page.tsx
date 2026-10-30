@@ -332,8 +332,20 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-slate-800/80 py-8 text-center text-xs text-slate-500">
-        <p>© 2026 ScanBite SaaS Platform. Built for modern food & hospitality businesses.</p>
+      <footer className="mt-auto border-t border-slate-800/80 py-8 px-4 text-center text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© 2026 ScanBite SaaS Platform. Built for modern food & hospitality businesses.</p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-1.5 text-slate-500 hover:text-orange-400 transition font-medium"
+              title="Super Admin & Founder Command Center"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Super Admin Portal</span>
+            </Link>
+          </div>
+        </div>
       </footer>
     </div>
   );

@@ -1,5 +1,1 @@
-import { notFound } from "next/navigation";
-
-export default function AdminPage() {
-  notFound();
-}
+export { default } from "../founder-hq/page";

@@ -9,6 +9,7 @@ import {
   demoServiceRequestsStore,
   addDemoServiceRequest,
   attendDemoServiceRequest,
+  vacateDemoTable,
 } from "./demoData";
 
 export const getRestaurantBySlug = async (slug: string): Promise<Restaurant | null> => {
@@ -79,7 +80,7 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
   return [];
 };
 
-export const getTableOrders = async (restaurantId: string, tableId: string): Promise<Order[]> => {
+export const getTableOrders = async (restaurantId: string, tableId: string, activeOnly: boolean = false): Promise<Order[]> => {
   try {
     const cleanNum = tableId.replace(/\D/g, "");
     const matchingTable = await prisma.table.findFirst({
@@ -104,41 +105,114 @@ export const getTableOrders = async (restaurantId: string, tableId: string): Pro
           { tableNumber: targetTableNumber },
           { tableId },
         ],
+        ...(activeOnly ? { status: { notIn: ["completed", "cancelled"] } } : {}),
       },
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
-    if (orders && orders.length > 0) {
-      return orders.map((o) => ({
-        ...o,
-        status: o.status as OrderStatus,
-        rating: o.rating ?? undefined,
-        reviewFeedback: o.reviewFeedback ?? undefined,
-        discount: o.discount ?? 0,
-        couponCode: o.couponCode ?? undefined,
-        items: o.items.map((it) => ({
-          menuItemId: it.menuItemId,
-          name: it.name,
-          price: it.price,
-          quantity: it.quantity,
-          isVeg: it.isVeg,
-          notes: it.notes,
-          orderedByName: it.orderedByName ?? undefined,
-          variantName: it.variantName ?? undefined,
-          selectedAddons: (it.selectedAddons as any) ?? undefined,
-        })),
-        createdAt: o.createdAt.toISOString(),
-        updatedAt: o.updatedAt.toISOString(),
-      }));
-    }
+    return orders.map((o) => ({
+      ...o,
+      status: o.status as OrderStatus,
+      rating: o.rating ?? undefined,
+      reviewFeedback: o.reviewFeedback ?? undefined,
+      discount: o.discount ?? 0,
+      couponCode: o.couponCode ?? undefined,
+      items: o.items.map((it) => ({
+        menuItemId: it.menuItemId,
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        isVeg: it.isVeg,
+        notes: it.notes,
+        orderedByName: it.orderedByName ?? undefined,
+        variantName: it.variantName ?? undefined,
+        selectedAddons: (it.selectedAddons as any) ?? undefined,
+      })),
+      createdAt: o.createdAt.toISOString(),
+      updatedAt: o.updatedAt.toISOString(),
+    }));
   } catch (err) {
     console.error("Prisma getTableOrders error:", err);
   }
 
   if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
-    return getDemoTableOrders(tableId);
+    return getDemoTableOrders(tableId, activeOnly);
   }
   return [];
+};
+
+export const vacateTable = async (restaurantId: string, tableId: string): Promise<boolean> => {
+  try {
+    const cleanNum = tableId.replace(/\D/g, "");
+    const matchingTable = await prisma.table.findFirst({
+      where: {
+        restaurantId,
+        OR: [
+          { id: tableId },
+          { tableNumber: tableId },
+          ...(cleanNum ? [{ tableNumber: `Table ${cleanNum}` }] : []),
+        ],
+      },
+    });
+
+    const targetTableId = matchingTable ? matchingTable.id : tableId;
+    const targetTableNumber = matchingTable ? matchingTable.tableNumber : (cleanNum ? `Table ${cleanNum}` : tableId);
+
+    // 1. Mark all active orders for this table as completed & paid
+    await prisma.order.updateMany({
+      where: {
+        restaurantId,
+        OR: [
+          { tableId: targetTableId },
+          { tableNumber: targetTableNumber },
+          { tableId },
+        ],
+        status: { notIn: ["completed", "cancelled"] },
+      },
+      data: {
+        status: "completed",
+        paymentStatus: "paid",
+      },
+    });
+
+    // 2. Clear any shared TableCart and diners
+    const tableCart = await prisma.tableCart.findFirst({
+      where: {
+        restaurantId,
+        OR: [
+          { tableId: targetTableId },
+          { tableId },
+        ],
+      },
+    });
+    if (tableCart) {
+      await prisma.tableCartItem.deleteMany({
+        where: { cartId: tableCart.id },
+      });
+      await prisma.tableDiner.deleteMany({
+        where: { cartId: tableCart.id },
+      });
+    }
+
+    // 3. Attend any pending service requests for this table
+    await prisma.serviceRequest.updateMany({
+      where: {
+        restaurantId,
+        tableId: targetTableId,
+        status: "pending",
+      },
+      data: {
+        status: "attended",
+      },
+    });
+
+    vacateDemoTable(tableId);
+    return true;
+  } catch (err) {
+    console.error("Prisma vacateTable error:", err);
+    vacateDemoTable(tableId);
+    return true;
+  }
 };
 
 export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<Order | null> => {

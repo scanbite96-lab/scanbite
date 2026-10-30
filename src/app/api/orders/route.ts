@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus } from "@/lib/store";
+import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus, vacateTable } from "@/lib/store";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 import { DEMO_RESTAURANT, resetDemoOrders } from "@/lib/demoData";
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
   }
 
   if (tableId) {
-    const orders = await getTableOrders(restaurantId, tableId);
+    const activeOnly = searchParams.get("activeOnly") === "true";
+    const orders = await getTableOrders(restaurantId, tableId, activeOnly);
     return NextResponse.json(orders);
   }
 
@@ -25,6 +26,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    if (body.action === "vacate_table") {
+      const { restaurantId, tableId } = body;
+      if (!restaurantId || !tableId) {
+        return NextResponse.json({ error: "Missing restaurantId or tableId" }, { status: 400 });
+      }
+      await vacateTable(restaurantId, tableId);
+      return NextResponse.json({ success: true, message: `Table ${tableId} vacated and reset successfully` });
+    }
 
     if (body.action === "reset_demo_orders") {
       try {

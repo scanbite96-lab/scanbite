@@ -19,7 +19,9 @@ export async function POST(request: NextRequest) {
       isVeg, 
       imageUrl,
       stockCount = -1,
-      lowStockThreshold = 5
+      lowStockThreshold = 5,
+      variants,
+      addons
     } = body;
 
     if (!restaurantId || !name || price === undefined) {
@@ -45,25 +47,6 @@ export async function POST(request: NextRequest) {
 
     const initialStock = stockCount !== undefined ? Number(stockCount) : -1;
 
-    // Handle demo dish creation in memory
-    if (isDemoRestaurant) {
-      const catId = categoryId || DEMO_RESTAURANT.categories[0]?.id || "cat-1";
-      const newDemoItem: MenuItem = {
-        id: `item-${Date.now()}`,
-        categoryId: catId,
-        name: String(name).trim(),
-        description: description || "",
-        price: Number(price),
-        isVeg: Boolean(isVeg),
-        isAvailable: initialStock === 0 ? false : true,
-        stockCount: initialStock,
-        lowStockThreshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : 5,
-        imageUrl: imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80",
-      };
-      DEMO_RESTAURANT.menuItems.unshift(newDemoItem);
-      return NextResponse.json(newDemoItem, { status: 201 });
-    }
-
     let catId = categoryId;
     if (!catId) {
       let cat = await prisma.category.findFirst({ where: { restaurantId } });
@@ -80,11 +63,34 @@ export async function POST(request: NextRequest) {
       catId = cat.id;
     }
 
-    const item = await prisma.menuItem.create({
-      data: {
-        restaurantId,
+    // Persist to Neon DB
+    let item: any = null;
+    try {
+      item = await prisma.menuItem.create({
+        data: {
+          restaurantId,
+          categoryId: catId,
+          name: String(name).trim(),
+          description: description || "",
+          price: Number(price),
+          isVeg: Boolean(isVeg),
+          isAvailable: initialStock === 0 ? false : true,
+          stockCount: initialStock,
+          lowStockThreshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : 5,
+          imageUrl: imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80",
+          variants: variants && Array.isArray(variants) && variants.length > 0 ? variants : undefined,
+          addons: addons && Array.isArray(addons) && addons.length > 0 ? addons : undefined,
+        },
+      });
+    } catch (dbErr) {
+      console.warn("Prisma dish creation failed, creating in demo store:", dbErr);
+    }
+
+    if (isDemoRestaurant) {
+      const demoItem: MenuItem = {
+        id: item?.id || `item-${Date.now()}`,
         categoryId: catId,
-        name,
+        name: String(name).trim(),
         description: description || "",
         price: Number(price),
         isVeg: Boolean(isVeg),
@@ -92,8 +98,12 @@ export async function POST(request: NextRequest) {
         stockCount: initialStock,
         lowStockThreshold: lowStockThreshold !== undefined ? Number(lowStockThreshold) : 5,
         imageUrl: imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80",
-      },
-    });
+        variants: variants && Array.isArray(variants) ? variants : undefined,
+        addons: addons && Array.isArray(addons) ? addons : undefined,
+      };
+      DEMO_RESTAURANT.menuItems.unshift(demoItem);
+      return NextResponse.json(item || demoItem, { status: 201 });
+    }
 
     return NextResponse.json(item, { status: 201 });
   } catch (err) {
@@ -171,7 +181,9 @@ export async function PATCH(request: NextRequest) {
       lowStockThreshold, 
       description, 
       imageUrl, 
-      categoryId 
+      categoryId,
+      variants,
+      addons
     } = body;
 
     if (!itemId) {
@@ -205,6 +217,8 @@ export async function PATCH(request: NextRequest) {
           else if (demoItem.stockCount > 0 && isAvailable === undefined) demoItem.isAvailable = true;
         }
         if (isAvailable !== undefined) demoItem.isAvailable = Boolean(isAvailable);
+        if (variants !== undefined) demoItem.variants = variants;
+        if (addons !== undefined) demoItem.addons = addons;
         return NextResponse.json(demoItem);
       }
     }
@@ -244,6 +258,8 @@ export async function PATCH(request: NextRequest) {
     if (isAvailable !== undefined) {
       updateData.isAvailable = Boolean(isAvailable);
     }
+    if (variants !== undefined) updateData.variants = variants;
+    if (addons !== undefined) updateData.addons = addons;
 
     const updated = await prisma.menuItem.update({
       where: { id: itemId },

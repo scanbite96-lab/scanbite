@@ -103,6 +103,7 @@ export default function CustomerTableMenu() {
   const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
   const [submittedRatingMap, setSubmittedRatingMap] = useState<Record<string, boolean>>({});
   const previousStatusMap = useRef<Record<string, string>>({});
+  const prevOrdersCountRef = useRef<number>(0);
 
   // Service request cooldown timer (seconds remaining)
   const [serviceCooldowns, setServiceCooldowns] = useState<Record<string, number>>({});
@@ -303,7 +304,7 @@ export default function CustomerTableMenu() {
   const fetchOrders = async () => {
     if (!restaurant || !currentTable) return;
     try {
-      const res = await fetch(`/api/orders?restaurantId=${restaurant.id}&tableId=${currentTable.id}`);
+      const res = await fetch(`/api/orders?restaurantId=${restaurant.id}&tableId=${currentTable.id}&activeOnly=true`);
       if (res.ok) {
         const data: Order[] = await res.json();
         
@@ -326,6 +327,12 @@ export default function CustomerTableMenu() {
           previousStatusMap.current[ord.id] = ord.status;
         });
 
+        if (prevOrdersCountRef.current > 0 && data.length === 0) {
+          setIsOrdersOpen(false);
+          showToast(lang === "hi" ? "टेबल का ऑर्डर पूरा हुआ। मेन्यू तैयार है! 🍽️" : "Order completed! Fresh menu ready 🍽️");
+        }
+
+        prevOrdersCountRef.current = data.length;
         setTableOrders(data);
       }
     } catch {
@@ -2068,9 +2075,27 @@ export default function CustomerTableMenu() {
 
                       {/* Order Payment Status / UPI Box */}
                       {order.paymentStatus === "paid" ? (
-                        <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 py-1.5 rounded-lg border border-emerald-200">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>{t.paymentCompleted} ({order.paymentMethod?.replace("_", " ")})</span>
+                        <div className="mt-3 p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center space-y-2.5">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-800">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>{t.paymentCompleted} ({order.paymentMethod?.replace("_", " ")})</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            {lang === "hi" 
+                              ? "🎉 आपका बिल भुगतान सफल हो चुका है! नीचे से व्हाट्सएप बिल रसीद प्राप्त करें या नई डिश मंगाने के लिए मेन्यू देखें।" 
+                              : "🎉 Payment settled successfully! Download your WhatsApp bill receipt below or browse the menu to order more dishes."}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsOrdersOpen(false);
+                              showToast(lang === "hi" ? "मेन्यू तैयार है! नई डिशेज देखें 🍽️" : "Menu ready! Explore more dishes 🍽️");
+                            }}
+                            className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+                          >
+                            <UtensilsCrossed className="w-3.5 h-3.5" />
+                            <span>{lang === "hi" ? "नया ऑर्डर शुरू करें / मेन्यू देखें 🍽️" : "Start New Order / Browse Menu 🍽️"}</span>
+                          </button>
                         </div>
                       ) : (
                         <OrderUpiBox 
