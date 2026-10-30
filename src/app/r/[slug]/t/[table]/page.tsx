@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
-import { Restaurant, MenuItem, Order, OrderItem, PortionVariant, DishAddon } from "@/types";
+import { Restaurant, MenuItem, Order, OrderItem, PortionVariant, DishAddon, TableCart, TableDiner, TableCartItem } from "@/types";
 import { DEMO_RESTAURANT } from "@/lib/demoData";
 import { translations, Language } from "@/lib/translations";
 import { 
@@ -18,16 +18,20 @@ import {
   Receipt, 
   X, 
   ChevronRight, 
-  UtensilsCrossed,
-  Sparkles,
-  ExternalLink,
-  Star,
-  Tag,
-  CheckCircle2,
-  Languages,
-  MessageCircle,
-  Trash2,
-  Check
+  UtensilsCrossed, 
+  Sparkles, 
+  ExternalLink, 
+  Star, 
+  Tag, 
+  CheckCircle2, 
+  Languages, 
+  MessageCircle, 
+  Trash2, 
+  Check,
+  Users,
+  UserPlus,
+  Share2,
+  Split
 } from "lucide-react";
 
 export default function CustomerTableMenu() {
@@ -78,6 +82,15 @@ export default function CustomerTableMenu() {
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; percentOff?: number; flatOff?: number } | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Diner identity for Group Ordering
+  const [dinerId, setDinerId] = useState<string>("");
+  const [dinerName, setDinerName] = useState<string>("");
+  const [isDinerNameModalOpen, setIsDinerNameModalOpen] = useState(false);
+  const [tempDinerName, setTempDinerName] = useState("");
+
+  // Shared Table Cart from database
+  const [tableCart, setTableCart] = useState<TableCart | null>(null);
 
   // Customer form details with localStorage persistence
   const [customerName, setCustomerName] = useState("");
@@ -163,6 +176,28 @@ export default function CustomerTableMenu() {
   // 3. Cart & Diner Details Persistence (localStorage)
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // Diner identity for group orders
+    let savedId = localStorage.getItem("scanbite_diner_id");
+    if (!savedId) {
+      savedId = `diner_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem("scanbite_diner_id", savedId);
+    }
+    setDinerId(savedId);
+
+    const savedName = localStorage.getItem("scanbite_diner_name");
+    if (savedName) {
+      setDinerName(savedName);
+      setTempDinerName(savedName);
+      setCustomerName(savedName);
+    } else {
+      const defaultName = `Diner ${Math.floor(Math.random() * 89 + 10)}`;
+      setDinerName(defaultName);
+      setTempDinerName(defaultName);
+      setCustomerName(defaultName);
+      localStorage.setItem("scanbite_diner_name", defaultName);
+    }
+
     const storageKey = `scanbite_cart_${slug}_${tableParam}`;
     try {
       const saved = localStorage.getItem(storageKey);
@@ -184,8 +219,6 @@ export default function CustomerTableMenu() {
         }
         setCart(normalized);
       }
-      const savedName = localStorage.getItem("scanbite_diner_name");
-      if (savedName) setCustomerName(savedName);
       const savedPhone = localStorage.getItem("scanbite_diner_phone");
       if (savedPhone) setCustomerPhone(savedPhone);
     } catch {
@@ -209,6 +242,8 @@ export default function CustomerTableMenu() {
   // Save diner details to localStorage
   const handleNameChange = (val: string) => {
     setCustomerName(val);
+    setDinerName(val);
+    setTempDinerName(val);
     if (typeof window !== "undefined") {
       try { localStorage.setItem("scanbite_diner_name", val); } catch {}
     }
@@ -298,9 +333,63 @@ export default function CustomerTableMenu() {
     }
   };
 
+  // 4b. Sync Shared Table Cart
+  const syncTableCart = async () => {
+    if (!restaurant || !currentTable) return;
+    try {
+      const res = await fetch(`/api/cart?restaurantId=${restaurant.id}&tableId=${currentTable.id}&tableNumber=${encodeURIComponent(currentTable.tableNumber)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.cart) {
+          setTableCart(data.cart);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const joinTableCart = async (nameToUse?: string) => {
+    if (!restaurant || !currentTable || !dinerId) return;
+    const activeName = (nameToUse || dinerName || customerName).trim() || "Guest";
+    try {
+      const res = await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "join",
+          restaurantId: restaurant.id,
+          tableId: currentTable.id,
+          tableNumber: currentTable.tableNumber,
+          dinerId,
+          dinerName: activeName,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.cart) {
+          setTableCart(data.cart);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    if (restaurant && currentTable && dinerId) {
+      joinTableCart();
+      syncTableCart();
+    }
+  }, [restaurant, currentTable, dinerId]);
+
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 4000); // 4-second real-time sync
+    syncTableCart();
+    const interval = setInterval(() => {
+      fetchOrders();
+      syncTableCart();
+    }, 3500); // 3.5-second real-time sync for orders and table cart
     return () => clearInterval(interval);
   }, [restaurant, currentTable]);
 
@@ -341,6 +430,7 @@ export default function CustomerTableMenu() {
     const addonsSum = selectedAddons.reduce((sum, a) => sum + a.price, 0);
     const unitPrice = basePrice + addonsSum;
 
+    // Optimistically update local cart
     setCart((prev) => {
       const existing = prev[cartKey];
       const newQty = (existing?.quantity || 0) + customizingQty;
@@ -357,6 +447,36 @@ export default function CustomerTableMenu() {
         },
       };
     });
+
+    // Also sync to shared table cart in database
+    if (restaurant && currentTable && dinerId) {
+      fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_item",
+          restaurantId: restaurant.id,
+          tableId: currentTable.id,
+          tableNumber: currentTable.tableNumber,
+          dinerId,
+          dinerName: dinerName || customerName || "Guest",
+          item: {
+            id: customizingItem.id,
+            name: customizingItem.name,
+            price: unitPrice,
+            isVeg: customizingItem.isVeg,
+          },
+          quantity: customizingQty,
+          variantName: selectedVariant?.name,
+          selectedAddons: selectedAddons.map((a) => ({ name: a.name, price: a.price })),
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.cart) setTableCart(data.cart);
+        })
+        .catch(() => {});
+    }
 
     const variantLabel = selectedVariant ? ` (${selectedVariant.name})` : "";
     showToast(
@@ -388,6 +508,34 @@ export default function CustomerTableMenu() {
         },
       };
     });
+
+    // Also sync to shared table cart in database
+    if (restaurant && currentTable && dinerId) {
+      fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_item",
+          restaurantId: restaurant.id,
+          tableId: currentTable.id,
+          tableNumber: currentTable.tableNumber,
+          dinerId,
+          dinerName: dinerName || customerName || "Guest",
+          item: {
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            isVeg: item.isVeg,
+          },
+          quantity: 1,
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data && data.cart) setTableCart(data.cart);
+        })
+        .catch(() => {});
+    }
   };
 
   const incrementCartKey = (key: string) => {
@@ -419,11 +567,92 @@ export default function CustomerTableMenu() {
     });
   };
 
+  const updateSharedCartItem = async (itemId: string, newQty: number, newNotes?: string) => {
+    triggerHaptic();
+    if (newQty <= 0) {
+      removeSharedCartItem(itemId);
+      return;
+    }
+
+    setTableCart((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((it) =>
+          it.id === itemId
+            ? { ...it, quantity: newQty, notes: newNotes !== undefined ? newNotes : it.notes }
+            : it
+        ),
+      };
+    });
+
+    if (restaurant && currentTable) {
+      try {
+        const res = await fetch("/api/cart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "update_item",
+            tableId: currentTable.id,
+            itemId,
+            quantity: newQty,
+            notes: newNotes,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.cart) setTableCart(data.cart);
+        }
+      } catch {}
+    }
+  };
+
+  const removeSharedCartItem = async (itemId: string) => {
+    triggerHaptic();
+    setTableCart((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.filter((it) => it.id !== itemId),
+      };
+    });
+
+    if (restaurant && currentTable) {
+      try {
+        const res = await fetch("/api/cart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "remove_item",
+            tableId: currentTable.id,
+            itemId,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.cart) setTableCart(data.cart);
+        }
+      } catch {}
+    }
+  };
+
   const removeFromCart = (keyOrId: string) => {
     decrementCartKey(keyOrId);
+    if (tableCart && tableCart.items) {
+      const myItem = tableCart.items.find((it) => it.menuItemId === keyOrId && (it.dinerId === dinerId || it.dinerName === dinerName))
+        || tableCart.items.find((it) => it.menuItemId === keyOrId);
+      if (myItem) {
+        updateSharedCartItem(myItem.id, myItem.quantity - 1);
+      }
+    }
   };
 
   const getItemCartQuantity = (itemId: string) => {
+    if (tableCart && tableCart.items && tableCart.items.length > 0) {
+      return tableCart.items
+        .filter((it) => it.menuItemId === itemId)
+        .reduce((sum, it) => sum + it.quantity, 0);
+    }
     return Object.values(cart)
       .filter((c) => c.item.id === itemId)
       .reduce((sum, c) => sum + c.quantity, 0);
@@ -431,10 +660,21 @@ export default function CustomerTableMenu() {
 
   const clearEntireCart = () => {
     setCart({});
+    setTableCart((prev) => (prev ? { ...prev, items: [] } : null));
     setAppliedCoupon(null);
     setCouponInput("");
     if (typeof window !== "undefined") {
       localStorage.removeItem(`scanbite_cart_${slug}_${tableParam}`);
+    }
+    if (restaurant && currentTable) {
+      fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "clear_cart",
+          tableId: currentTable.id,
+        }),
+      }).catch(() => {});
     }
     showToast(lang === "hi" ? "कार्ट खाली कर दिया गया है" : "Cart cleared");
   };
@@ -511,10 +751,25 @@ export default function CustomerTableMenu() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Shared table cart items
+  const sharedItems = tableCart?.items || [];
+  const hasSharedItems = sharedItems.length > 0;
+
   // Cart calculations
   const cartItems = Object.values(cart);
-  const cartCount = cartItems.reduce((acc, c) => acc + c.quantity, 0);
-  const subtotal = cartItems.reduce((acc, c) => acc + (c.unitPrice ?? c.item.price) * c.quantity, 0);
+  const cartCount = hasSharedItems
+    ? sharedItems.reduce((acc, c) => acc + c.quantity, 0)
+    : cartItems.reduce((acc, c) => acc + c.quantity, 0);
+
+  const subtotal = hasSharedItems
+    ? sharedItems.reduce((acc, c) => acc + c.price * c.quantity, 0)
+    : cartItems.reduce((acc, c) => acc + (c.unitPrice ?? c.item.price) * c.quantity, 0);
+
+  const myShareSubtotal = hasSharedItems
+    ? sharedItems
+        .filter((c) => c.dinerId === dinerId || c.dinerName === dinerName)
+        .reduce((acc, c) => acc + c.price * c.quantity, 0)
+    : subtotal;
   
   // Discount calculation
   let discountAmount = 0;
@@ -531,24 +786,40 @@ export default function CustomerTableMenu() {
   const taxAmount = Number(((taxableAmount * taxRate) / 100).toFixed(2));
   const grandTotal = Number((taxableAmount + taxAmount).toFixed(2));
 
-  // Place Order
+  // Place Order (Master Order for Table)
   const handlePlaceOrder = async () => {
     if (cartCount === 0 || !restaurant || !currentTable) return;
     setIsPlacingOrder(true);
     try {
-      const orderPayloadItems: OrderItem[] = cartItems.map((c) => ({
-        menuItemId: c.item.id,
-        name: c.item.name,
-        price: c.unitPrice ?? c.item.price,
-        quantity: c.quantity,
-        isVeg: c.item.isVeg,
-        notes: c.notes || undefined,
-        variantName: c.variantName || undefined,
-        selectedAddons:
-          c.selectedAddons && c.selectedAddons.length > 0
-            ? c.selectedAddons.map((a) => ({ name: a.name, price: a.price }))
-            : undefined,
-      }));
+      const orderPayloadItems: OrderItem[] = hasSharedItems
+        ? sharedItems.map((c) => ({
+            menuItemId: c.menuItemId,
+            name: c.name,
+            price: c.price,
+            quantity: c.quantity,
+            isVeg: c.isVeg,
+            notes: c.notes || undefined,
+            variantName: c.variantName || undefined,
+            selectedAddons:
+              c.selectedAddons && Array.isArray(c.selectedAddons) && c.selectedAddons.length > 0
+                ? (c.selectedAddons as any[]).map((a) => ({ name: a.name, price: a.price }))
+                : undefined,
+            orderedByName: c.dinerName || dinerName || "Guest",
+          }))
+        : cartItems.map((c) => ({
+            menuItemId: c.item.id,
+            name: c.item.name,
+            price: c.unitPrice ?? c.item.price,
+            quantity: c.quantity,
+            isVeg: c.item.isVeg,
+            notes: c.notes || undefined,
+            variantName: c.variantName || undefined,
+            selectedAddons:
+              c.selectedAddons && c.selectedAddons.length > 0
+                ? c.selectedAddons.map((a) => ({ name: a.name, price: a.price }))
+                : undefined,
+            orderedByName: dinerName || customerName || "Guest",
+          }));
 
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -557,7 +828,7 @@ export default function CustomerTableMenu() {
           restaurantId: restaurant.id,
           tableId: currentTable.id,
           tableNumber: currentTable.tableNumber,
-          customerName: customerName.trim() || undefined,
+          customerName: customerName.trim() || dinerName.trim() || undefined,
           customerPhone: customerPhone.trim() || undefined,
           items: orderPayloadItems,
           subtotal,
@@ -573,6 +844,7 @@ export default function CustomerTableMenu() {
       const order: Order = await res.json();
 
       setCart({});
+      setTableCart((prev) => (prev ? { ...prev, items: [] } : null));
       setAppliedCoupon(null);
       setCouponInput("");
       if (typeof window !== "undefined") {
@@ -872,6 +1144,71 @@ export default function CustomerTableMenu() {
                 {serviceCooldowns.bill ? `${t.requested} (${serviceCooldowns.bill}s)` : t.getBill}
               </span>
             </button>
+          </div>
+
+          {/* Group Diners & Live Table Cart Bar */}
+          <div className="mt-3 pt-3 border-t border-slate-100">
+            <div className="bg-gradient-to-r from-sky-50 via-sky-50/60 to-indigo-50/50 border border-sky-100 rounded-2xl p-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-sky-600" />
+                  <span className="text-xs font-black text-slate-800">
+                    {t.groupOrdering}
+                  </span>
+                  <span className="text-[10px] font-extrabold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded-full border border-sky-200">
+                    {tableCart?.diners?.length || 1} {t.peopleCount}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDinerNameModalOpen(true)}
+                  className="text-[11px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 transition"
+                >
+                  <span className="text-slate-500 font-medium">{t.joinedAs}</span>
+                  <span className="underline font-black text-sky-800">{dinerName || "Set Name"}</span>
+                  <span className="text-[10px]">✏️</span>
+                </button>
+              </div>
+
+              {/* Diners list chips */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(tableCart?.diners && tableCart.diners.length > 0
+                  ? tableCart.diners
+                  : [{ dinerId, name: dinerName || "You" }]
+                ).map((d) => {
+                  const isMe = d.dinerId === dinerId || d.name === dinerName;
+                  return (
+                    <span
+                      key={d.dinerId}
+                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border transition ${
+                        isMe
+                          ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                          : "bg-white text-slate-700 border-sky-200"
+                      }`}
+                    >
+                      <span>👤 {d.name}</span>
+                      {isMe && <span className="text-[9px] opacity-90 font-medium">(You)</span>}
+                    </span>
+                  );
+                })}
+
+                {/* Invite Friends / Share Table Link button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = typeof window !== "undefined" ? window.location.href : "";
+                    if (typeof navigator !== "undefined" && navigator.clipboard) {
+                      navigator.clipboard.writeText(url);
+                      showToast(lang === "hi" ? "🔗 टेबल लिंक कॉपी हो गया! दोस्तों को भेजें।" : "🔗 Table link copied! Share with your table friends.");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-sky-700 border border-dashed border-sky-300 hover:bg-sky-50 active:scale-95 transition"
+                >
+                  <Share2 className="w-2.5 h-2.5" />
+                  <span>{lang === "hi" ? "+ साथी जोड़ें" : "+ Invite"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1217,75 +1554,159 @@ export default function CustomerTableMenu() {
 
             {/* Cart Items List */}
             <div className="p-4 overflow-y-auto space-y-3.5 flex-1 divide-y divide-slate-100">
-              {cartItems.map(({ cartKey, item, quantity, notes, variantName, selectedAddons, unitPrice }) => (
-                <div key={cartKey} className="pt-3 first:pt-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span
-                          className={`w-3 h-3 border-2 rounded-sm flex items-center justify-center shrink-0 ${
-                            item.isVeg ? "border-emerald-600" : "border-red-600"
-                          }`}
-                        >
-                          <span
-                            className={`w-1 h-1 rounded-full ${
-                              item.isVeg ? "bg-emerald-600" : "bg-red-600"
-                            }`}
-                          />
-                        </span>
-                        <span className="font-bold text-slate-800 text-xs">{item.name}</span>
-                        {variantName && (
-                          <span className="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded border border-orange-200">
-                            {variantName}
-                          </span>
-                        )}
-                      </div>
+              {hasSharedItems ? (
+                sharedItems.map((it) => {
+                  const isMyItem = it.dinerId === dinerId || it.dinerName === dinerName;
+                  return (
+                    <div key={it.id} className="pt-3 first:pt-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`w-3 h-3 border-2 rounded-sm flex items-center justify-center shrink-0 ${
+                                it.isVeg ? "border-emerald-600" : "border-red-600"
+                              }`}
+                            >
+                              <span
+                                className={`w-1 h-1 rounded-full ${
+                                  it.isVeg ? "bg-emerald-600" : "bg-red-600"
+                                }`}
+                              />
+                            </span>
+                            <span className="font-bold text-slate-800 text-xs">{it.name}</span>
+                            {it.variantName && (
+                              <span className="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded border border-orange-200">
+                                {it.variantName}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                isMyItem
+                                  ? "bg-sky-100 text-sky-800 border-sky-300"
+                                  : "bg-slate-100 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              👤 {it.dinerName} {isMyItem ? "(You)" : ""}
+                            </span>
+                          </div>
 
-                      {selectedAddons && selectedAddons.length > 0 && (
-                        <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
-                          + {selectedAddons.map((a) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                          {it.selectedAddons && Array.isArray(it.selectedAddons) && it.selectedAddons.length > 0 && (
+                            <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
+                              + {(it.selectedAddons as any[]).map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                            </div>
+                          )}
+
+                          <div className="text-[10px] text-slate-400 pl-4 mt-0.5 font-medium">
+                            {restaurant.currencySymbol}{it.price} each
+                          </div>
                         </div>
-                      )}
 
-                      <div className="text-[10px] text-slate-400 pl-4 mt-0.5 font-medium">
-                        {restaurant.currencySymbol}{unitPrice} each
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <div className="flex items-center bg-slate-100 rounded-lg font-bold text-xs">
+                            <button
+                              onClick={() => updateSharedCartItem(it.id, it.quantity - 1)}
+                              className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="px-1.5 text-slate-900">{it.quantity}</span>
+                            <button
+                              onClick={() => updateSharedCartItem(it.id, it.quantity + 1)}
+                              className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+
+                          <span className="text-xs font-black text-slate-900 w-14 text-right">
+                            {restaurant.currencySymbol}
+                            {it.price * it.quantity}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Special notes per item */}
+                      <input
+                        type="text"
+                        placeholder={t.cookingNotePlaceholder}
+                        value={it.notes || ""}
+                        onChange={(e) => updateSharedCartItem(it.id, it.quantity, e.target.value)}
+                        className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  );
+                })
+              ) : (
+                cartItems.map(({ cartKey, item, quantity, notes, variantName, selectedAddons, unitPrice }) => (
+                  <div key={cartKey} className="pt-3 first:pt-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`w-3 h-3 border-2 rounded-sm flex items-center justify-center shrink-0 ${
+                              item.isVeg ? "border-emerald-600" : "border-red-600"
+                            }`}
+                          >
+                            <span
+                              className={`w-1 h-1 rounded-full ${
+                                item.isVeg ? "bg-emerald-600" : "bg-red-600"
+                              }`}
+                            />
+                          </span>
+                          <span className="font-bold text-slate-800 text-xs">{item.name}</span>
+                          {variantName && (
+                            <span className="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded border border-orange-200">
+                              {variantName}
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedAddons && selectedAddons.length > 0 && (
+                          <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
+                            + {selectedAddons.map((a) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}
+                          </div>
+                        )}
+
+                        <div className="text-[10px] text-slate-400 pl-4 mt-0.5 font-medium">
+                          {restaurant.currencySymbol}{unitPrice} each
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex items-center bg-slate-100 rounded-lg font-bold text-xs">
+                          <button
+                            onClick={() => decrementCartKey(cartKey)}
+                            className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span className="px-1.5 text-slate-900">{quantity}</span>
+                          <button
+                            onClick={() => incrementCartKey(cartKey)}
+                            className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        <span className="text-xs font-black text-slate-900 w-14 text-right">
+                          {restaurant.currencySymbol}
+                          {unitPrice * quantity}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <div className="flex items-center bg-slate-100 rounded-lg font-bold text-xs">
-                        <button
-                          onClick={() => decrementCartKey(cartKey)}
-                          className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="px-1.5 text-slate-900">{quantity}</span>
-                        <button
-                          onClick={() => incrementCartKey(cartKey)}
-                          className="px-2 py-1 text-slate-600 hover:text-slate-900 active:scale-95 transition"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      <span className="text-xs font-black text-slate-900 w-14 text-right">
-                        {restaurant.currencySymbol}
-                        {unitPrice * quantity}
-                      </span>
-                    </div>
+                    {/* Special notes per item */}
+                    <input
+                      type="text"
+                      placeholder={t.cookingNotePlaceholder}
+                      value={notes}
+                      onChange={(e) => updateItemNotes(cartKey, e.target.value)}
+                      className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
+                    />
                   </div>
-
-                  {/* Special notes per item */}
-                  <input
-                    type="text"
-                    placeholder={t.cookingNotePlaceholder}
-                    value={notes}
-                    onChange={(e) => updateItemNotes(cartKey, e.target.value)}
-                    className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-              ))}
+                ))
+              )}
 
               {/* Recommended Add-ons (Cross-selling) */}
               {recommendedAddons.length > 0 && (
@@ -1443,6 +1864,19 @@ export default function CustomerTableMenu() {
 
               {/* Bill Breakdown */}
               <div className="pt-4 space-y-1.5 text-xs text-slate-600">
+                {/* Personal Share preview in Group Cart */}
+                {hasSharedItems && myShareSubtotal > 0 && (
+                  <div className="p-2.5 bg-sky-50 rounded-xl border border-sky-200/80 mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs text-sky-900 font-bold">
+                      <Users className="w-3.5 h-3.5 text-sky-600" />
+                      <span>{lang === "hi" ? "आपका व्यक्तिगत हिस्सा:" : "Your Share in Cart:"}</span>
+                    </div>
+                    <span className="text-xs font-black text-sky-800">
+                      {restaurant.currencySymbol}{Math.round((myShareSubtotal / subtotal) * grandTotal)}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex justify-between">
                   <span>{t.subtotal}</span>
                   <span>
@@ -1638,13 +2072,14 @@ export default function CustomerTableMenu() {
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                           <span>{t.paymentCompleted} ({order.paymentMethod?.replace("_", " ")})</span>
                         </div>
-                      ) : order.paymentMethod === "upi_online" ? (
-                        <OrderUpiBox order={order} restaurant={restaurant} tableNumber={currentTable?.tableNumber} />
                       ) : (
-                        <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between text-xs text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
-                          <span className="font-semibold">{t.paymentCounterCash}</span>
-                          <span className="font-bold text-[11px] bg-amber-200/60 px-2 py-0.5 rounded">{t.payAtCounter}</span>
-                        </div>
+                        <OrderUpiBox 
+                          order={order} 
+                          restaurant={restaurant} 
+                          tableNumber={currentTable?.tableNumber} 
+                          myDinerName={dinerName}
+                          lang={lang}
+                        />
                       )}
 
                       {/* WhatsApp Bill Receipt Button */}
@@ -1788,6 +2223,247 @@ export default function CustomerTableMenu() {
           </div>
         </div>
       )}
+
+      {/* Customisation Drawer Modal */}
+      {customizingItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom">
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 flex items-start justify-between gap-3 bg-white">
+              <div className="flex items-start gap-2.5">
+                <span
+                  className={`w-4 h-4 border-2 rounded-sm flex items-center justify-center shrink-0 mt-0.5 ${
+                    customizingItem.isVeg ? "border-emerald-600" : "border-red-600"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      customizingItem.isVeg ? "bg-emerald-600" : "bg-red-600"
+                    }`}
+                  />
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-tight">
+                    {customizingItem.name}
+                  </h3>
+                  <p className="text-xs text-orange-600 font-bold mt-0.5">
+                    {t.customiseItem}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCustomizingItem(null)}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body: Scrollable options */}
+            <div className="p-4 overflow-y-auto space-y-5 flex-1 divide-y divide-slate-100">
+              {/* Section 1: Portion Size (Single-Select Radio) */}
+              {customizingItem.variants && customizingItem.variants.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>🍽️</span>
+                      <span>{t.choosePortion}</span>
+                    </h4>
+                    <span className="text-[10px] bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full font-bold">
+                      {lang === "hi" ? "अनिवार्य" : "Required"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {customizingItem.variants.map((v) => {
+                      const isSelected = selectedVariant?.id === v.id || selectedVariant?.name === v.name;
+                      return (
+                        <button
+                          key={v.id || v.name}
+                          type="button"
+                          onClick={() => setSelectedVariant(v)}
+                          className={`w-full p-3 rounded-xl border flex items-center justify-between transition active:scale-[0.99] ${
+                            isSelected
+                              ? "border-orange-500 bg-orange-50/70 shadow-xs ring-1 ring-orange-500"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition ${
+                                isSelected ? "border-orange-600" : "border-slate-300"
+                              }`}
+                            >
+                              {isSelected && <div className="w-2 h-2 rounded-full bg-orange-600" />}
+                            </div>
+                            <span className={`text-xs font-bold ${isSelected ? "text-slate-900" : "text-slate-700"}`}>
+                              {v.name}
+                            </span>
+                          </div>
+                          <span className="text-xs font-extrabold text-slate-900">
+                            {restaurant.currencySymbol}{v.price}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Section 2: Add-ons / Extras (Multi-Select Checkboxes) */}
+              {customizingItem.addons && customizingItem.addons.length > 0 && (
+                <div className="pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <span>✨</span>
+                      <span>{t.addOns}</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      {lang === "hi" ? "वैकल्पिक" : "Optional"}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {customizingItem.addons.map((addon) => {
+                      const isChecked = selectedAddons.some((a) => a.id === addon.id || a.name === addon.name);
+                      return (
+                        <button
+                          key={addon.id || addon.name}
+                          type="button"
+                          onClick={() => {
+                            if (isChecked) {
+                              setSelectedAddons((prev) => prev.filter((a) => a.id !== addon.id && a.name !== addon.name));
+                            } else {
+                              setSelectedAddons((prev) => [...prev, addon]);
+                            }
+                          }}
+                          className={`w-full p-3 rounded-xl border flex items-center justify-between transition active:scale-[0.99] ${
+                            isChecked
+                              ? "border-orange-500 bg-orange-50/70 shadow-xs ring-1 ring-orange-500"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-4 h-4 rounded border flex items-center justify-center transition ${
+                                isChecked ? "bg-orange-600 border-orange-600" : "border-slate-300 bg-white"
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                            </div>
+                            <span className={`text-xs font-bold ${isChecked ? "text-slate-900" : "text-slate-700"}`}>
+                              {addon.name}
+                            </span>
+                          </div>
+                          <span className="text-xs font-extrabold text-orange-600">
+                            +{restaurant.currencySymbol}{addon.price}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer: Stepper + Total Price + Add to Cart button */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
+              {/* Quantity Stepper */}
+              <div className="flex items-center bg-white border border-slate-200 rounded-xl shadow-xs font-extrabold text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCustomizingQty((q) => Math.max(1, q - 1))}
+                  className="px-3 py-2 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="px-2 text-slate-900">{customizingQty}</span>
+                <button
+                  type="button"
+                  onClick={() => setCustomizingQty((q) => q + 1)}
+                  className="px-3 py-2 text-slate-600 hover:text-slate-900 active:scale-95 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Add to Cart button */}
+              {(() => {
+                const basePrice = selectedVariant ? selectedVariant.price : customizingItem.price;
+                const addonsSum = selectedAddons.reduce((acc, a) => acc + a.price, 0);
+                const totalModalPrice = (basePrice + addonsSum) * customizingQty;
+
+                return (
+                  <button
+                    type="button"
+                    onClick={handleConfirmCustomization}
+                    className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-extrabold transition shadow-lg shadow-orange-600/20 active:scale-95 flex items-center justify-between px-4"
+                  >
+                    <span>{lang === "hi" ? "कार्ट में जोड़ें" : "Add to Cart"}</span>
+                    <span className="text-white font-black text-sm">
+                      {restaurant.currencySymbol}{totalModalPrice}
+                    </span>
+                  </button>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Diner Name Change / Set Modal */}
+      {isDinerNameModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-slate-100 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-sky-600" />
+                <h3 className="font-extrabold text-slate-900 text-sm">
+                  {lang === "hi" ? "टेबल पर आपका नाम" : "Your Name at Table"}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsDinerNameModalOpen(false)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mb-3">
+              {t.enterNamePrompt}
+            </p>
+            <input
+              type="text"
+              placeholder={lang === "hi" ? "जैसे: आकाश, राहुल, प्रिया" : "e.g. Aakash, Rahul, Priya"}
+              value={tempDinerName}
+              onChange={(e) => setTempDinerName(e.target.value)}
+              className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const trimmed = tempDinerName.trim() || `Diner ${Math.floor(Math.random() * 89 + 10)}`;
+                  handleNameChange(trimmed);
+                  joinTableCart(trimmed);
+                  setIsDinerNameModalOpen(false);
+                  showToast(lang === "hi" ? `✅ स्वागत है ${trimmed}!` : `✅ Welcome, ${trimmed}!`);
+                }}
+                className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95"
+              >
+                {lang === "hi" ? "सुरक्षित करें" : "Save & Join"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDinerNameModalOpen(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+              >
+                {lang === "hi" ? "रद्द करें" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1796,20 +2472,86 @@ function OrderUpiBox({
   order,
   restaurant,
   tableNumber,
+  myDinerName,
+  lang = "en",
 }: {
   order: Order;
   restaurant: Restaurant;
   tableNumber?: string;
+  myDinerName?: string;
+  lang?: Language;
 }) {
+  const [splitTab, setSplitTab] = useState<"full" | "equal" | "itemized">("full");
+  const [equalCount, setEqualCount] = useState<number>(2);
+
+  // Extract diners from order.items
+  const dinersInOrder = useMemo(() => {
+    const set = new Set<string>();
+    order.items.forEach((it) => {
+      if (it.orderedByName) set.add(it.orderedByName);
+    });
+    const list = Array.from(set);
+    return list.length > 0 ? list : ["Guest"];
+  }, [order.items]);
+
+  const [selectedDiner, setSelectedDiner] = useState<string>(
+    myDinerName && dinersInOrder.includes(myDinerName) ? myDinerName : dinersInOrder[0] || "Guest"
+  );
+
+  useEffect(() => {
+    if (myDinerName && dinersInOrder.includes(myDinerName)) {
+      setSelectedDiner(myDinerName);
+    }
+  }, [myDinerName, dinersInOrder]);
+
+  // Compute itemized share for selectedDiner
+  const dinerItems = useMemo(() => {
+    return order.items.filter((it) => (it.orderedByName || "Guest") === selectedDiner);
+  }, [order.items, selectedDiner]);
+
+  const dinerSubtotal = useMemo(() => {
+    return dinerItems.reduce((acc, it) => acc + it.price * it.quantity, 0);
+  }, [dinerItems]);
+
+  const itemizedAmount = useMemo(() => {
+    if (order.subtotal <= 0) return order.total;
+    const ratio = dinerSubtotal / order.subtotal;
+    return Math.max(1, Math.round(ratio * order.total));
+  }, [dinerSubtotal, order.subtotal, order.total]);
+
+  // Compute active amount and note
+  const { amountToPay, noteLabel, shareDescription } = useMemo(() => {
+    if (splitTab === "equal") {
+      const perHead = Math.ceil(order.total / Math.max(1, equalCount));
+      return {
+        amountToPay: perHead,
+        noteLabel: `Equal Split 1 of ${equalCount}`,
+        shareDescription: `${restaurant.currencySymbol}${perHead} ${lang === "hi" ? "प्रति व्यक्ति" : "per person"} (${equalCount} ${lang === "hi" ? "लोग" : "people"})`,
+      };
+    }
+    if (splitTab === "itemized") {
+      return {
+        amountToPay: itemizedAmount,
+        noteLabel: `Share of ${selectedDiner}`,
+        shareDescription: `${restaurant.currencySymbol}${itemizedAmount} (${selectedDiner})`,
+      };
+    }
+    return {
+      amountToPay: order.total,
+      noteLabel: `Full Bill`,
+      shareDescription: `${restaurant.currencySymbol}${order.total} (${lang === "hi" ? "पूरा बिल" : "Full Bill"})`,
+    };
+  }, [splitTab, equalCount, selectedDiner, itemizedAmount, order.total, restaurant.currencySymbol, lang]);
+
   const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   const uri = useMemo(() => {
     const vpa = (restaurant.upiId || "restaurant@upi").trim();
     const name = encodeURIComponent(restaurant.name);
     const tableTag = encodeURIComponent(tableNumber || order.tableNumber || "Table");
-    const amount = Number(order.total).toFixed(2);
-    return `upi://pay?pa=${vpa}&pn=${name}&am=${amount}&cu=INR&tn=Bill%20Order%20${order.id.slice(-4)}%20${tableTag}`;
-  }, [restaurant, order, tableNumber]);
+    const amountStr = Number(amountToPay).toFixed(2);
+    return `upi://pay?pa=${vpa}&pn=${name}&am=${amountStr}&cu=INR&tn=Bill%20Order%20${order.id.slice(-4)}%20${tableTag}%20(${encodeURIComponent(noteLabel)})`;
+  }, [restaurant, order, tableNumber, amountToPay, noteLabel]);
 
   useEffect(() => {
     QRCode.toDataURL(uri, {
@@ -1821,32 +2563,193 @@ function OrderUpiBox({
       .catch(() => setQrUrl(null));
   }, [uri]);
 
+  // WhatsApp share message
+  const shareWhatsAppSplit = () => {
+    const vpa = restaurant.upiId || "restaurant@upi";
+    let text = `🍽️ *${restaurant.name}* (${tableNumber || order.tableNumber})\n` +
+      `🧾 Order #${order.id.slice(-4)}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `*Split Bill: ${shareDescription}*\n` +
+      `Amount: ${restaurant.currencySymbol}${amountToPay}\n`;
+
+    if (splitTab === "itemized" && dinerItems.length > 0) {
+      text += `Items for ${selectedDiner}:\n` +
+        dinerItems.map((it) => `• ${it.quantity}x ${it.name} (${restaurant.currencySymbol}${it.price * it.quantity})`).join("\n") +
+        `\n━━━━━━━━━━━━━━━━\n`;
+    }
+
+    text += `UPI ID: ${vpa}\n` +
+      `Pay directly via UPI link:\n${uri}`;
+
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    if (typeof window !== "undefined") {
+      window.open(waUrl, "_blank");
+    }
+  };
+
   return (
-    <div className="mt-3 pt-3 border-t border-slate-200 text-center bg-orange-50/60 p-3 rounded-xl border border-orange-100">
-      <p className="text-[11px] font-bold text-orange-950 mb-1">
-        Scan & Pay via UPI for Order #{order.id.slice(-4)}:
-      </p>
-      <p className="text-[10px] text-slate-500 mb-2">
-        VPA: <strong>{restaurant.upiId || "restaurant@upi"}</strong> • Amount: <strong>{restaurant.currencySymbol}{order.total}</strong>
-      </p>
+    <div className="mt-3 pt-3 border-t border-slate-200 bg-orange-50/70 p-3.5 rounded-2xl border border-orange-200 shadow-xs">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-1.5">
+          <Split className="w-4 h-4 text-orange-600" />
+          <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">
+            {lang === "hi" ? "बिल भुगतान और विभाजन (Split)" : "Pay & Split Bill"}
+          </h4>
+        </div>
+        <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
+          Order #{order.id.slice(-4)}
+        </span>
+      </div>
+
+      {/* 3 Split Tabs */}
+      <div className="grid grid-cols-3 gap-1 p-0.5 bg-orange-100/70 rounded-xl mb-3">
+        <button
+          type="button"
+          onClick={() => setSplitTab("full")}
+          className={`py-1.5 px-1 text-[11px] font-extrabold rounded-lg transition ${
+            splitTab === "full"
+              ? "bg-white text-orange-700 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          {lang === "hi" ? "पूरा बिल" : "Full Bill"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSplitTab("equal")}
+          className={`py-1.5 px-1 text-[11px] font-extrabold rounded-lg transition ${
+            splitTab === "equal"
+              ? "bg-white text-orange-700 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          {lang === "hi" ? "बराबर बांटें" : "Equal Split"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSplitTab("itemized")}
+          className={`py-1.5 px-1 text-[11px] font-extrabold rounded-lg transition ${
+            splitTab === "itemized"
+              ? "bg-white text-orange-700 shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          {lang === "hi" ? "मेरा हिस्सा" : "My Share"}
+        </button>
+      </div>
+
+      {/* Tab 2: Equal Split Controls */}
+      {splitTab === "equal" && (
+        <div className="bg-white rounded-xl p-2.5 border border-orange-200/70 mb-3 flex items-center justify-between">
+          <div className="text-left">
+            <span className="text-xs font-bold text-slate-800 block">
+              {lang === "hi" ? "व्यक्तियों की संख्या" : "Number of People"}
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {restaurant.currencySymbol}{order.total} ÷ {equalCount}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-100 rounded-lg p-1">
+            <button
+              type="button"
+              onClick={() => setEqualCount((c) => Math.max(2, c - 1))}
+              className="w-6 h-6 rounded bg-white text-slate-700 flex items-center justify-center font-bold text-sm shadow-xs hover:bg-slate-50 active:scale-95 transition"
+            >
+              -
+            </button>
+            <span className="font-extrabold text-xs px-2 text-slate-900">{equalCount}</span>
+            <button
+              type="button"
+              onClick={() => setEqualCount((c) => Math.min(20, c + 1))}
+              className="w-6 h-6 rounded bg-white text-slate-700 flex items-center justify-center font-bold text-sm shadow-xs hover:bg-slate-50 active:scale-95 transition"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: Itemized / Diner Picker */}
+      {splitTab === "itemized" && (
+        <div className="bg-white rounded-xl p-2.5 border border-orange-200/70 mb-3 text-left">
+          <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase">
+            {lang === "hi" ? "किसका हिस्सा देखना है?" : "Select Diner:"}
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {dinersInOrder.map((dn) => (
+              <button
+                key={dn}
+                type="button"
+                onClick={() => setSelectedDiner(dn)}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition ${
+                  selectedDiner === dn
+                    ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                👤 {dn} {dn === myDinerName ? "(You)" : ""}
+              </button>
+            ))}
+          </div>
+
+          {/* List of items ordered by selected diner */}
+          <div className="border-t border-slate-100 pt-1.5 space-y-1">
+            {dinerItems.map((it, idx) => (
+              <div key={idx} className="flex justify-between items-center text-[11px] text-slate-600">
+                <span>{it.quantity}x {it.name}</span>
+                <span className="font-bold text-slate-900">
+                  {restaurant.currencySymbol}{it.price * it.quantity}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Amount Display */}
+      <div className="text-center mb-2">
+        <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider block">
+          {lang === "hi" ? "भुगतान राशि:" : "Amount to Pay:"}
+        </span>
+        <div className="text-2xl font-black text-orange-600">
+          {restaurant.currencySymbol}{amountToPay}
+        </div>
+        <p className="text-[10px] text-slate-500 font-medium">
+          VPA: <strong>{restaurant.upiId || "restaurant@upi"}</strong>
+        </p>
+      </div>
+
+      {/* QR Code */}
       {qrUrl ? (
         <img
           src={qrUrl}
-          alt={`UPI QR Code for Order #${order.id}`}
-          className="w-36 h-36 mx-auto rounded-lg border border-slate-200 p-1.5 bg-white shadow-sm"
+          alt={`UPI QR Code for ${noteLabel}`}
+          className="w-36 h-36 mx-auto rounded-xl border border-slate-200 p-1.5 bg-white shadow-sm"
         />
       ) : (
-        <div className="w-36 h-36 mx-auto bg-slate-100 rounded-lg animate-pulse flex items-center justify-center text-xs text-slate-400">
+        <div className="w-36 h-36 mx-auto bg-slate-100 rounded-xl animate-pulse flex items-center justify-center text-xs text-slate-400">
           Generating QR...
         </div>
       )}
-      <a
-        href={uri}
-        className="inline-flex items-center gap-1.5 mt-2.5 px-3.5 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-sm transition active:scale-95"
-      >
-        <span>Open in UPI App (GPay / PhonePe)</span>
-        <ExternalLink className="w-3 h-3" />
-      </a>
+
+      {/* Action Buttons: 1-Tap UPI App + Share on WhatsApp */}
+      <div className="flex flex-col gap-2 mt-3">
+        <a
+          href={uri}
+          className="w-full py-2.5 px-3 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+        >
+          <span>Open in UPI App (GPay / PhonePe)</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+        <button
+          type="button"
+          onClick={shareWhatsAppSplit}
+          className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+          <span>{lang === "hi" ? "व्हाट्सएप पर शेयर करें" : "Share Split on WhatsApp"}</span>
+        </button>
+      </div>
     </div>
   );
 }

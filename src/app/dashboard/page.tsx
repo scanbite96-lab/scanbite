@@ -2293,6 +2293,11 @@ export default function RestaurantDashboard() {
                                         {item.variantName}
                                       </span>
                                     )}
+                                    {item.orderedByName && (
+                                      <span className="text-[10px] bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded border border-sky-200">
+                                        👤 {item.orderedByName}
+                                      </span>
+                                    )}
                                   </div>
                                   {item.selectedAddons && item.selectedAddons.length > 0 && (
                                     <div className="text-[10px] text-slate-500 font-medium pl-4 mt-0.5">
@@ -3254,6 +3259,11 @@ export default function RestaurantDashboard() {
                       {it.variantName && (
                         <span className="ml-1 text-[11px] font-bold text-orange-600 uppercase">
                           [{it.variantName}]
+                        </span>
+                      )}
+                      {it.orderedByName && (
+                        <span className="ml-1 text-[10px] font-bold text-sky-700 bg-sky-50 px-1 py-0.2 rounded border border-sky-200">
+                          (Diner: {it.orderedByName})
                         </span>
                       )}
                       {it.selectedAddons && it.selectedAddons.length > 0 && (
