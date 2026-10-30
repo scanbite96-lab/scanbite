@@ -226,7 +226,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json(restaurant, { status: 201 });
+    const { password: _p, staffPin: _sp, ...safeRestaurant } = restaurant as Record<string, unknown>;
+    return NextResponse.json(safeRestaurant, { status: 201 });
   } catch (err) {
     console.error("Register restaurant error:", err);
     return NextResponse.json({ error: "Failed to register restaurant" }, { status: 500 });

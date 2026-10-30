@@ -10,6 +10,67 @@ export async function POST(request: NextRequest) {
     const isSuperAdmin = isSuperAdminRequest(request);
 
     const body = await request.json();
+
+    if (body.action === "addCategory" || body.type === "category") {
+      const { restaurantId, name, icon } = body;
+      if (!restaurantId || !name?.trim()) {
+        return NextResponse.json({ error: "Missing required category fields (restaurantId, name)" }, { status: 400 });
+      }
+
+      const isDemoRestaurant = restaurantId === "rest-001" || restaurantId === "grand-spice";
+
+      if (!session && !isSuperAdmin && !isDemoRestaurant) {
+        return NextResponse.json({ error: "Unauthorized: Please log in as owner." }, { status: 401 });
+      }
+      if (session?.role === "staff") {
+        return NextResponse.json({ error: "Unauthorized: Staff cannot add categories. Owner access required." }, { status: 403 });
+      }
+
+      if (!isSuperAdmin && session?.id !== restaurantId && session?.role !== "admin" && !isDemoRestaurant) {
+        const rest = await prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { slug: true } });
+        if (!rest || rest.slug !== session?.slug) {
+          return NextResponse.json({ error: "Forbidden: You cannot modify another restaurant's menu." }, { status: 403 });
+        }
+      }
+
+      const catIcon = icon && String(icon).trim() ? String(icon).trim() : "🍽️";
+      let category: any = null;
+
+      try {
+        const highestOrder = await prisma.category.findFirst({
+          where: { restaurantId },
+          orderBy: { sortOrder: "desc" },
+          select: { sortOrder: true },
+        });
+        const nextOrder = (highestOrder?.sortOrder ?? 0) + 1;
+
+        category = await prisma.category.create({
+          data: {
+            restaurantId,
+            name: String(name).trim(),
+            icon: catIcon,
+            sortOrder: nextOrder,
+          },
+        });
+      } catch (dbErr) {
+        console.warn("Prisma category creation failed, falling back to demo store:", dbErr);
+      }
+
+      if (isDemoRestaurant || !category) {
+        const demoCategory = {
+          id: category?.id || `cat-${Date.now()}`,
+          name: String(name).trim(),
+          icon: catIcon,
+          sortOrder: (DEMO_RESTAURANT.categories?.length || 0) + 1,
+        };
+        if (!DEMO_RESTAURANT.categories) DEMO_RESTAURANT.categories = [];
+        DEMO_RESTAURANT.categories.push(demoCategory);
+        return NextResponse.json(category || demoCategory, { status: 201 });
+      }
+
+      return NextResponse.json(category, { status: 201 });
+    }
+
     const { 
       restaurantId, 
       categoryId, 
@@ -118,13 +179,82 @@ export async function DELETE(request: NextRequest) {
     const isSuperAdmin = isSuperAdminRequest(request);
 
     const { searchParams } = new URL(request.url);
+    const categoryId = searchParams.get("categoryId");
+
+    if (categoryId) {
+      const hasDemoPrefix = String(categoryId).startsWith("cat-");
+      const inDemoStore = Boolean(DEMO_RESTAURANT.categories?.some((c) => c.id === categoryId));
+
+      let dbCategory: { id: string; restaurantId: string; restaurant?: { id: string; slug: string } } | null = null;
+      try {
+        dbCategory = await prisma.category.findUnique({
+          where: { id: categoryId },
+          select: { id: true, restaurantId: true, restaurant: { select: { id: true, slug: true } } },
+        });
+      } catch (dbErr) {
+        // Fallback gracefully if database is unreachable
+      }
+
+      const isDemoDbCategory = Boolean(
+        dbCategory && (dbCategory.restaurantId === "rest-001" || dbCategory.restaurant?.slug === "grand-spice")
+      );
+
+      const isDemoCategory = hasDemoPrefix || inDemoStore || isDemoDbCategory;
+
+      if (!session && !isSuperAdmin && !isDemoCategory) {
+        return NextResponse.json({ error: "Unauthorized: Owner access required." }, { status: 401 });
+      }
+      if (session?.role === "staff") {
+        return NextResponse.json({ error: "Unauthorized: Staff cannot delete categories." }, { status: 403 });
+      }
+
+      if (!isSuperAdmin && dbCategory && !isDemoCategory) {
+        const ownsCategory = session?.id === dbCategory.restaurantId || session?.slug === dbCategory.restaurant?.slug || session?.role === "admin";
+        if (!ownsCategory) {
+          return NextResponse.json({ error: "Forbidden: You cannot delete another restaurant's category." }, { status: 403 });
+        }
+      }
+
+      const idx = DEMO_RESTAURANT.categories.findIndex((c) => c.id === categoryId);
+      if (idx !== -1) {
+        DEMO_RESTAURANT.categories.splice(idx, 1);
+      }
+      DEMO_RESTAURANT.menuItems = DEMO_RESTAURANT.menuItems.filter((it) => it.categoryId !== categoryId);
+
+      try {
+        await prisma.menuItem.deleteMany({ where: { categoryId } });
+        await prisma.category.delete({ where: { id: categoryId } });
+      } catch (dbErr) {
+        // Safe to ignore if record only existed in memory
+      }
+
+      return NextResponse.json({ success: true });
+    }
+
     const itemId = searchParams.get("itemId");
 
     if (!itemId) {
-      return NextResponse.json({ error: "Missing itemId" }, { status: 400 });
+      return NextResponse.json({ error: "Missing itemId or categoryId" }, { status: 400 });
     }
 
-    const isDemoItem = String(itemId).startsWith("item-");
+    const hasDemoItemPrefix = String(itemId).startsWith("item-");
+    const inDemoItemStore = Boolean(DEMO_RESTAURANT.menuItems?.some((it) => it.id === itemId));
+
+    let dbItemToDelete: { id: string; restaurantId: string; restaurant?: { id: string; slug: string } } | null = null;
+    try {
+      dbItemToDelete = await prisma.menuItem.findUnique({
+        where: { id: itemId },
+        select: { id: true, restaurantId: true, restaurant: { select: { id: true, slug: true } } },
+      });
+    } catch (dbErr) {
+      // Fallback gracefully if database is unreachable
+    }
+
+    const isDemoDbItemToDelete = Boolean(
+      dbItemToDelete && (dbItemToDelete.restaurantId === "rest-001" || dbItemToDelete.restaurant?.slug === "grand-spice")
+    );
+
+    const isDemoItem = hasDemoItemPrefix || inDemoItemStore || isDemoDbItemToDelete;
 
     if (!session && !isSuperAdmin && !isDemoItem) {
       return NextResponse.json({ error: "Unauthorized: Please log in as owner to delete dishes." }, { status: 401 });
@@ -137,8 +267,13 @@ export async function DELETE(request: NextRequest) {
       const idx = DEMO_RESTAURANT.menuItems.findIndex((it) => it.id === itemId);
       if (idx !== -1) {
         DEMO_RESTAURANT.menuItems.splice(idx, 1);
-        return NextResponse.json({ success: true });
       }
+      try {
+        await prisma.menuItem.delete({ where: { id: itemId } });
+      } catch (e) {
+        // Safe to ignore if record only existed in memory
+      }
+      return NextResponse.json({ success: true });
     }
 
     const item = await prisma.menuItem.findUnique({
@@ -190,7 +325,24 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Missing itemId" }, { status: 400 });
     }
 
-    const isDemoItem = String(itemId).startsWith("item-");
+    const hasDemoPrefix = String(itemId).startsWith("item-");
+    const inDemoStore = Boolean(DEMO_RESTAURANT.menuItems?.some((m) => m.id === itemId));
+
+    let dbItem: { id: string; restaurantId: string; isAvailable?: boolean; restaurant?: { id: string; slug: string } } | null = null;
+    try {
+      dbItem = await prisma.menuItem.findUnique({
+        where: { id: itemId },
+        select: { id: true, restaurantId: true, isAvailable: true, restaurant: { select: { id: true, slug: true } } },
+      });
+    } catch (dbErr) {
+      // Fallback gracefully if database is unreachable
+    }
+
+    const isDemoDbItem = Boolean(
+      dbItem && (dbItem.restaurantId === "rest-001" || dbItem.restaurant?.slug === "grand-spice")
+    );
+
+    const isDemoItem = hasDemoPrefix || inDemoStore || isDemoDbItem;
 
     if (!session && !isSuperAdmin && !isDemoItem) {
       return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
@@ -219,11 +371,37 @@ export async function PATCH(request: NextRequest) {
         if (isAvailable !== undefined) demoItem.isAvailable = Boolean(isAvailable);
         if (variants !== undefined) demoItem.variants = variants;
         if (addons !== undefined) demoItem.addons = addons;
+
+        // Also sync to live database if this demo item exists in PostgreSQL
+        if (dbItem) {
+          try {
+            const syncData: Record<string, unknown> = {};
+            if (name !== undefined) syncData.name = demoItem.name;
+            if (price !== undefined) syncData.price = demoItem.price;
+            if (isVeg !== undefined) syncData.isVeg = demoItem.isVeg;
+            if (description !== undefined) syncData.description = demoItem.description;
+            if (imageUrl !== undefined) syncData.imageUrl = demoItem.imageUrl;
+            if (categoryId !== undefined) syncData.categoryId = demoItem.categoryId;
+            if (lowStockThreshold !== undefined) syncData.lowStockThreshold = demoItem.lowStockThreshold;
+            if (stockCount !== undefined) syncData.stockCount = demoItem.stockCount;
+            if (isAvailable !== undefined || stockCount !== undefined) syncData.isAvailable = demoItem.isAvailable;
+            if (variants !== undefined) syncData.variants = variants;
+            if (addons !== undefined) syncData.addons = addons;
+
+            await prisma.menuItem.update({
+              where: { id: itemId },
+              data: syncData,
+            });
+          } catch (syncErr) {
+            // Safe to ignore DB sync error for demo store fallback
+          }
+        }
+
         return NextResponse.json(demoItem);
       }
     }
 
-    const item = await prisma.menuItem.findUnique({
+    const item = dbItem || await prisma.menuItem.findUnique({
       where: { id: itemId },
       include: { restaurant: { select: { id: true, slug: true } } },
     });
@@ -232,7 +410,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Menu item not found" }, { status: 404 });
     }
 
-    if (!isSuperAdmin && session?.id !== item.restaurant.id && session?.slug !== item.restaurant.slug && session?.role !== "admin") {
+    if (!isSuperAdmin && !isDemoItem && session?.id !== item.restaurant?.id && session?.slug !== item.restaurant?.slug && session?.role !== "admin") {
       return NextResponse.json({ error: "Forbidden: Cannot edit another restaurant's dish." }, { status: 403 });
     }
 

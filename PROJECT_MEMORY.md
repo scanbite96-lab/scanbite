@@ -48,11 +48,13 @@
 
 ### 2. Kitchen & Owner Dashboard (`/dashboard`)
 - **Kitchen Display System (KDS):** Live order cards with item checklist, portion sizes, add-ons, and diner names (`👤 {orderedByName}`).
-- **Thermal KOT Slip:** One-click ESC/POS styled thermal print modal including `(Diner: {orderedByName})`.
+- **Thermal KOT Slip:** One-click ESC/POS styled thermal print modal including `(Diner: {orderedByName})` and customer phone number.
 - **Sound Alert (Beep / Chime):** Web Audio Synthesizer loud double-chime on incoming orders with Sound ON/OFF toggle in navbar.
-- **Menu Management:** Add, edit, delete dishes, toggle "In Stock" / "Sold Out", manage portion variants and add-ons.
-- **Table Management & QR Tent Cards:** Add/delete tables and 1-click printable QR tent cards with high-res QR codes.
-- **Sound & Credentials Settings:** Change Owner Password, Staff PIN, and store info.
+- **Menu & Stock Management:** Add dish modal (`max-h-[90vh] overflow-y-auto` prevent viewport cutoff), full "Edit Dish" pencil button & pre-populated modal (name, price, description, category, veg/non-veg, stock limit, low stock threshold, portion variants, addons, image URL) wired to `PATCH /api/menu`, category manager modal with emoji picker, and category filter pills in table.
+- **Business Analytics (Overview):** Date range filter ("Today", "Yesterday", "This Week", "This Month", "All Time") dynamically updating Total Sales, Total Orders, and Avg Order Value with clean integer formatting (`₹5,696`); Customer Reviews & Ratings feed showing diner feedback, stars, table, and date; 1-click "Export Sales Report to CSV".
+- **KDS Order Intelligence:** Diner phone number display, delayed kitchen order pulse alerts (>15-20 min in pending/cooking), and total outstanding unpaid balance summary in the filter bar.
+- **Table Management & QR Tent Cards:** Add/delete tables, quick-edit table name & seating capacity via `PATCH /api/tables`, and 1-click printable QR tent cards with high-res QR codes.
+- **Settings & Dynamic UPI QR Preview:** Live dynamic UPI payment QR code preview rendered with QRCode canvas, updated Cloud PostgreSQL database references, and change Owner Password / Staff PIN.
 
 ### 3. Super Admin Command Center (`/founder-hq`)
 - **Global Overview:** Total platform revenue, active restaurants, active orders, and monthly recurring revenue.

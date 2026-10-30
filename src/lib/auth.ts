@@ -7,7 +7,13 @@ const SECRET_KEY = process.env.AUTH_SECRET || "scanbite-super-secret-salt-2026";
 const ADMIN_MASTER_KEYS = [process.env.ADMIN_SECRET, "admin2026", "superadmin", "founder2026"].filter(Boolean) as string[];
 
 export function signToken(payload: AuthUser): string {
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const tokenPayload = {
+    ...payload,
+    iat: now,
+    exp: now + 7 * 24 * 60 * 60, // 7 days expiration
+  };
+  const data = Buffer.from(JSON.stringify(tokenPayload)).toString("base64url");
   const signature = crypto.createHmac("sha256", SECRET_KEY).update(data).digest("base64url");
   return `${data}.${signature}`;
 }
@@ -17,8 +23,20 @@ export function verifyToken(token: string): AuthUser | null {
     const [data, signature] = token.split(".");
     if (!data || !signature) return null;
     const expectedSig = crypto.createHmac("sha256", SECRET_KEY).update(data).digest("base64url");
-    if (signature !== expectedSig) return null;
-    return JSON.parse(Buffer.from(data, "base64url").toString("utf8")) as AuthUser;
+    
+    // Constant-time comparison to prevent timing attacks
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSig);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
+
+    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf8")) as AuthUser & { exp?: number };
+    // Check token expiration
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    return payload;
   } catch {
     return null;
   }

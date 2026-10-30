@@ -81,6 +81,7 @@ export default function RestaurantDashboard() {
   const isInitialReqsLoadedRef = useRef<boolean>(false);
   const lastLoadedSlugRef = useRef<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const lastQrFingerprintRef = useRef<string>("");
 
   // KDS filter & search
   const [kdsFilter, setKdsFilter] = useState<"active" | "pending" | "cooking" | "ready" | "served" | "unpaid" | "all">("active");
@@ -212,6 +213,50 @@ export default function RestaurantDashboard() {
   const [settingsAddress, setSettingsAddress] = useState("");
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState<string | null>(null);
+
+  // Category Filter & Management State
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("all");
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryIcon, setNewCategoryIcon] = useState("🍽️");
+  const [isSubmittingCategory, setIsSubmittingCategory] = useState(false);
+
+  // Edit Dish Modal State
+  const [editingDish, setEditingDish] = useState<MenuItem | null>(null);
+  const [editDishName, setEditDishName] = useState("");
+  const [editDishPrice, setEditDishPrice] = useState("");
+  const [editDishCategory, setEditDishCategory] = useState("");
+  const [editDishIsVeg, setEditDishIsVeg] = useState(true);
+  const [editDishDesc, setEditDishDesc] = useState("");
+  const [editDishImage, setEditDishImage] = useState("");
+  const [editDishStock, setEditDishStock] = useState("-1");
+  const [editDishLowThreshold, setEditDishLowThreshold] = useState(5);
+  const [editDishVariants, setEditDishVariants] = useState<Array<{ id?: string; name: string; price: number }>>([]);
+  const [editDishAddons, setEditDishAddons] = useState<Array<{ id?: string; name: string; price: number }>>([]);
+  const [editVariantInputName, setEditVariantInputName] = useState("");
+  const [editVariantInputPrice, setEditVariantInputPrice] = useState("");
+  const [editAddonInputName, setEditAddonInputName] = useState("");
+  const [editAddonInputPrice, setEditAddonInputPrice] = useState("");
+  const [isSubmittingEditDish, setIsSubmittingEditDish] = useState(false);
+
+  // Edit Table Modal State
+  const [editingTable, setEditingTable] = useState<Table | null>(null);
+  const [editTableNum, setEditTableNum] = useState("");
+  const [editTableSeats, setEditTableSeats] = useState(4);
+  const [isUpdatingTable, setIsUpdatingTable] = useState(false);
+
+  // Analytics Time Range State
+  const [analyticsTimeRange, setAnalyticsTimeRange] = useState<"today" | "yesterday" | "this_week" | "this_month" | "all">("all");
+
+  // Dynamic UPI Payment QR Preview State
+  const [upiPreviewQr, setUpiPreviewQr] = useState<string | null>(null);
+
+  // Preset Emoji Palette for Categories
+  const CATEGORY_ICONS_PRESET = [
+    "🍽️", "🍢", "🍛", "🫓", "🍹", "🍨", "🍕", "🍔", 
+    "🍜", "🥗", "☕", "🍰", "🥟", "🥪", "🍱", "🍲", 
+    "🥤", "🌮", "🌯", "🍟", "🥞", "🍣", "🍺", "🍷"
+  ];
 
   // Verify session on mount
   useEffect(() => {
@@ -413,7 +458,7 @@ export default function RestaurantDashboard() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setCredSaveMsg({ type: "success", text: "Security credentials updated in SQLite database!" });
+        setCredSaveMsg({ type: "success", text: "Security credentials updated in Cloud PostgreSQL database!" });
         setNewOwnerPassword("");
         if (data.user) setAuthUser(data.user);
       } else {
@@ -635,9 +680,13 @@ export default function RestaurantDashboard() {
     return () => clearInterval(interval);
   }, [restaurantSlug, authUser]);
 
-  // Generate QR codes for tables
+  // Generate QR codes for tables (memoized to eliminate 4-second CPU storm)
   useEffect(() => {
     if (!restaurant) return;
+    const fingerprint = `${restaurant.slug}:${(restaurant.tables || []).map((t) => `${t.id}:${t.tableNumber}`).join(",")}`;
+    if (fingerprint === lastQrFingerprintRef.current) return;
+    lastQrFingerprintRef.current = fingerprint;
+
     const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
 
     const generateQRs = async () => {
@@ -662,6 +711,36 @@ export default function RestaurantDashboard() {
 
     generateQRs();
   }, [restaurant]);
+
+  // Generate Live Dynamic UPI Payment QR Preview for Settings
+  useEffect(() => {
+    const vpa = settingsUpi.trim();
+    if (!vpa) {
+      setUpiPreviewQr(null);
+      return;
+    }
+    let isCancelled = false;
+    const generateUpiQr = async () => {
+      try {
+        const mod = await import("qrcode");
+        const QRCode = mod.default || mod;
+        const uri = `upi://pay?pa=${encodeURIComponent(vpa)}&pn=${encodeURIComponent(settingsName || restaurant?.name || "Restaurant")}&cu=INR`;
+        const dataUrl = await QRCode.toDataURL(uri, {
+          width: 240,
+          margin: 1,
+          color: { dark: "#0f172a", light: "#ffffff" },
+        });
+        if (!isCancelled) setUpiPreviewQr(dataUrl);
+      } catch (err) {
+        console.error("Failed to generate UPI QR preview:", err);
+        if (!isCancelled) setUpiPreviewQr(null);
+      }
+    };
+    generateUpiQr();
+    return () => {
+      isCancelled = true;
+    };
+  }, [settingsUpi, settingsName, restaurant?.name]);
 
   // Reset Demo Orders Handler
   const handleResetDemoOrders = async () => {
@@ -1328,9 +1407,303 @@ export default function RestaurantDashboard() {
     });
   }, [orders, kdsFilter, kdsSearch]);
 
+  // Analytics Filtered Orders Memo
+  const filteredAnalyticsOrders = useMemo(() => {
+    if (analyticsTimeRange === "all") return orders;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    if (analyticsTimeRange === "today") {
+      return orders.filter((o) => new Date(o.createdAt) >= startOfToday);
+    }
+    if (analyticsTimeRange === "yesterday") {
+      const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      return orders.filter((o) => {
+        const d = new Date(o.createdAt);
+        return d >= startOfYesterday && d < startOfToday;
+      });
+    }
+    if (analyticsTimeRange === "this_week") {
+      const day = now.getDay();
+      const diffToMonday = (day + 6) % 7; // Monday as start of week
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diffToMonday, 0, 0, 0, 0);
+      return orders.filter((o) => new Date(o.createdAt) >= startOfWeek);
+    }
+    if (analyticsTimeRange === "this_month") {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      return orders.filter((o) => new Date(o.createdAt) >= startOfMonth);
+    }
+    return orders;
+  }, [orders, analyticsTimeRange]);
+
+  const customerReviews = useMemo(() => {
+    return orders
+      .filter((o) => (o.rating && o.rating > 0) || (o.reviewFeedback && o.reviewFeedback.trim().length > 0))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [orders]);
+
+  const unpaidOrders = useMemo(() => {
+    return orders.filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled");
+  }, [orders]);
+  const unpaidCount = unpaidOrders.length;
+  const unpaidTotalBalance = useMemo(() => {
+    return unpaidOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+  }, [unpaidOrders]);
+
+  // Format currency integers cleanly without decimal noise
+  const formatCurrency = (val: number) => {
+    return `${restaurant?.currencySymbol || "₹"}${Math.round(val || 0).toLocaleString("en-IN")}`;
+  };
+
+  // Edit Dish Handlers
+  const openEditDishModal = (dish: MenuItem) => {
+    setEditingDish(dish);
+    setEditDishName(dish.name);
+    setEditDishPrice(dish.price.toString());
+    setEditDishCategory(dish.categoryId);
+    setEditDishIsVeg(dish.isVeg);
+    setEditDishDesc(dish.description || "");
+    setEditDishImage(dish.imageUrl || "");
+    setEditDishStock(dish.stockCount !== null && dish.stockCount !== undefined ? dish.stockCount.toString() : "-1");
+    setEditDishLowThreshold(dish.lowStockThreshold ?? 5);
+    setEditDishVariants(dish.variants ? JSON.parse(JSON.stringify(dish.variants)) : []);
+    setEditDishAddons(dish.addons ? JSON.parse(JSON.stringify(dish.addons)) : []);
+    setEditVariantInputName("");
+    setEditVariantInputPrice("");
+    setEditAddonInputName("");
+    setEditAddonInputPrice("");
+  };
+
+  const handleEditDishSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isOwner || !editingDish || !restaurant) return;
+    if (!editDishName.trim() || !editDishPrice) {
+      showToast("Dish name and price are required.", "error");
+      return;
+    }
+    setIsSubmittingEditDish(true);
+    try {
+      const payload = {
+        itemId: editingDish.id,
+        name: editDishName.trim(),
+        price: Number(editDishPrice),
+        categoryId: editDishCategory || editingDish.categoryId,
+        isVeg: editDishIsVeg,
+        description: editDishDesc.trim(),
+        imageUrl: editDishImage.trim(),
+        stockCount: editDishStock.trim() === "" ? -1 : Number(editDishStock),
+        lowStockThreshold: Number(editDishLowThreshold) || 5,
+        variants: editDishVariants,
+        addons: editDishAddons,
+      };
+
+      const res = await fetch("/api/menu", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const updatedItem = await res.json();
+        setRestaurant((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            menuItems: prev.menuItems.map((it) => (it.id === editingDish.id ? { ...it, ...updatedItem } : it)),
+          };
+        });
+        showToast(`Dish "${editDishName.trim()}" updated successfully! ✓`, "success");
+        setEditingDish(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Failed to update dish.", "error");
+      }
+    } catch {
+      showToast("Network error updating dish.", "error");
+    } finally {
+      setIsSubmittingEditDish(false);
+    }
+  };
+
+  // Category Management Handlers
+  const handleAddCategorySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isOwner || !restaurant) return;
+    if (!newCategoryName.trim()) {
+      showToast("Category name is required.", "error");
+      return;
+    }
+    setIsSubmittingCategory(true);
+    try {
+      const res = await fetch("/api/menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "addCategory",
+          restaurantId: restaurant.id,
+          name: newCategoryName.trim(),
+          icon: newCategoryIcon || "🍽️",
+        }),
+      });
+
+      if (res.ok) {
+        const newCat = await res.json();
+        setRestaurant((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            categories: [...prev.categories, newCat],
+          };
+        });
+        showToast(`Category "${newCategoryName.trim()}" created! ✓`, "success");
+        setNewCategoryName("");
+        setNewCategoryIcon("🍽️");
+        loadDashboardData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || "Failed to create category.", "error");
+      }
+    } catch {
+      showToast("Network error creating category.", "error");
+    } finally {
+      setIsSubmittingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (catId: string, catName: string) => {
+    if (!isOwner) return;
+    const dishCount = restaurant?.menuItems.filter((it) => it.categoryId === catId).length || 0;
+    if (dishCount > 0) {
+      if (!confirm(`Warning: Category "${catName}" has ${dishCount} dishes assigned. Deleting this category will delete all assigned dishes. Proceed?`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`Are you sure you want to delete category "${catName}"?`)) return;
+    }
+
+    try {
+      const res = await fetch(`/api/menu?categoryId=${catId}`, { method: "DELETE" });
+      if (res.ok) {
+        setRestaurant((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            categories: prev.categories.filter((c) => c.id !== catId),
+            menuItems: prev.menuItems.filter((it) => it.categoryId !== catId),
+          };
+        });
+        if (selectedCategoryFilter === catId) {
+          setSelectedCategoryFilter("all");
+        }
+        showToast(`Category "${catName}" removed.`, "success");
+        loadDashboardData();
+      } else {
+        showToast("Failed to delete category.", "error");
+      }
+    } catch {
+      showToast("Network error deleting category.", "error");
+    }
+  };
+
+  // Edit Table Handlers
+  const handleOpenEditTable = (table: Table) => {
+    setEditingTable(table);
+    setEditTableNum(table.tableNumber);
+    setEditTableSeats(table.seats || 4);
+  };
+
+  const handleEditTableSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTable || !restaurant || !editTableNum.trim()) return;
+    setIsUpdatingTable(true);
+    try {
+      const res = await fetch("/api/tables", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingTable.id,
+          tableNumber: editTableNum.trim(),
+          seats: Number(editTableSeats) || 4,
+          restaurantId: restaurant.id,
+        }),
+      });
+      if (res.ok) {
+        showToast(`Table updated to "${editTableNum.trim()}" (${editTableSeats} seats)! ✓`, "success");
+        setEditingTable(null);
+        loadDashboardData();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Failed to update table.", "error");
+      }
+    } catch {
+      showToast("Error updating table.", "error");
+    } finally {
+      setIsUpdatingTable(false);
+    }
+  };
+
+  // Export Sales Report to CSV Handler
+  const handleExportSalesReport = () => {
+    const records = filteredAnalyticsOrders.filter((o) => o.status !== "cancelled");
+    if (records.length === 0) {
+      showToast("No sales records available to export for this date range.", "error");
+      return;
+    }
+
+    const headers = [
+      "Order ID",
+      "Date",
+      "Table Number",
+      "Customer Name",
+      "Customer Phone",
+      "Items Ordered",
+      "Subtotal",
+      "Tax",
+      "Discount",
+      "Total Amount",
+      "Payment Status",
+      "Payment Method",
+      "Order Status",
+    ];
+
+    const escapeCsv = (val: unknown) => `"${String(val ?? "").replace(/"/g, '""')}"`;
+
+    const rows = records.map((o) => [
+      escapeCsv(o.id),
+      escapeCsv(new Date(o.createdAt).toLocaleString("en-IN")),
+      escapeCsv(o.tableNumber),
+      escapeCsv(o.customerName || "Walk-in Guest"),
+      escapeCsv(o.customerPhone || "N/A"),
+      escapeCsv(o.items.map((i) => `${i.quantity}x ${i.name}`).join("; ")),
+      escapeCsv(Math.round(o.subtotal)),
+      escapeCsv(Math.round(o.tax)),
+      escapeCsv(Math.round(o.discount || 0)),
+      escapeCsv(Math.round(o.total)),
+      escapeCsv(o.paymentStatus),
+      escapeCsv(o.paymentMethod || "counter_cash"),
+      escapeCsv(o.status),
+    ].join(","));
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `sales-report-${restaurant?.slug || "restaurant"}-${analyticsTimeRange}-${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showToast(`Exported ${records.length} sales records to CSV successfully! ✓`, "success");
+  };
+
   // Analytics Calculations
   const analyticsData = useMemo(() => {
-    const validOrders = orders.filter((o) => o.status !== "cancelled");
+    const validOrders = filteredAnalyticsOrders.filter((o) => o.status !== "cancelled");
     const totalRevenue = validOrders.reduce((acc, o) => acc + o.total, 0);
     const avgOrderValue = validOrders.length > 0 ? Math.round(totalRevenue / validOrders.length) : 0;
     
@@ -1362,7 +1735,7 @@ export default function RestaurantDashboard() {
       avgRating,
       ratingCount: ratedOrders.length,
     };
-  }, [orders]);
+  }, [filteredAnalyticsOrders, orders]);
 
   // Active Pending Service Requests
   const pendingRequests = serviceRequests.filter((r) => r.status === "pending");
@@ -2074,9 +2447,13 @@ export default function RestaurantDashboard() {
               <div className="bg-white p-3.5 rounded-2xl border border-rose-200 shadow-xs flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Unpaid Bills</span>
-                  <div className="text-xl font-black text-rose-900 mt-0.5">
-                    {orders.filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled").length}
+                  <div className="text-xl font-black text-rose-900 mt-0.5 flex items-baseline gap-1.5">
+                    <span>{unpaidCount}</span>
+                    <span className="text-xs font-bold text-rose-600">
+                      ({restaurant?.currencySymbol || "₹"}{Math.round(unpaidTotalBalance).toLocaleString("en-IN")})
+                    </span>
                   </div>
+                  <p className="text-[10px] text-rose-600 font-medium mt-0.5">Outstanding balance</p>
                 </div>
                 <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm">
                   💵
@@ -2133,7 +2510,7 @@ export default function RestaurantDashboard() {
                     kdsFilter === "unpaid" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  Unpaid ({orders.filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled").length})
+                  Unpaid ({unpaidCount} • {restaurant?.currencySymbol || "₹"}{Math.round(unpaidTotalBalance).toLocaleString("en-IN")})
                 </button>
                 <button
                   onClick={() => setKdsFilter("all")}
@@ -2227,6 +2604,9 @@ export default function RestaurantDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredOrders.map((order) => {
                   const minutesAgo = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+                  const isCookingOrPending = order.status === "pending" || order.status === "cooking";
+                  const isDelayed = isCookingOrPending && minutesAgo >= 15;
+                  const isSevereDelay = isCookingOrPending && minutesAgo >= 20;
 
                   const statusConfig = {
                     pending: {
@@ -2284,8 +2664,24 @@ export default function RestaurantDashboard() {
                   return (
                     <div
                       key={order.id}
-                      className={`bg-white rounded-2xl p-5 border flex flex-col justify-between shadow-sm transition hover:shadow-md ${config.cardBorder}`}
+                      className={`bg-white rounded-2xl p-5 border flex flex-col justify-between shadow-sm transition hover:shadow-md ${
+                        isSevereDelay
+                          ? "border-rose-400 ring-2 ring-rose-500/60 shadow-rose-100 bg-rose-50/10 animate-pulse"
+                          : isDelayed
+                          ? "border-amber-400 ring-2 ring-amber-500/50 shadow-amber-100 bg-amber-50/10 animate-pulse"
+                          : config.cardBorder
+                      }`}
                     >
+                      {/* Delayed Alert Top Banner */}
+                      {isDelayed && (
+                        <div className={`-mx-5 -mt-5 mb-3 px-4 py-1.5 text-[10px] font-extrabold flex items-center justify-between rounded-t-2xl ${
+                          isSevereDelay ? "bg-rose-600 text-white animate-pulse" : "bg-amber-500 text-white"
+                        }`}>
+                          <span>⚠️ Kitchen Delay: Order in queue for {minutesAgo} minutes!</span>
+                          <span className="uppercase text-[9px] font-bold">Needs Priority</span>
+                        </div>
+                      )}
+
                       {/* Ticket Header */}
                       <div>
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -2293,12 +2689,20 @@ export default function RestaurantDashboard() {
                             <span className="text-xl font-black text-slate-900 tracking-tight">
                               {order.tableNumber}
                             </span>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
                               <span>#{order.id.slice(-4)}</span>
                               <span>•</span>
-                              <span className="font-semibold text-slate-700">
+                              <span className={`font-semibold ${isDelayed ? "text-rose-600 font-bold" : "text-slate-700"}`}>
                                 {minutesAgo <= 0 ? "Just now" : `${minutesAgo}m ago`}
                               </span>
+                              {isDelayed && (
+                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                  isSevereDelay ? "bg-rose-100 text-rose-800 border border-rose-300" : "bg-amber-100 text-amber-800 border border-amber-300"
+                                }`}>
+                                  <Clock className="w-3 h-3 text-rose-600" />
+                                  <span>{isSevereDelay ? `🔥 Overdue ${minutesAgo}m` : `⚠️ Delayed ${minutesAgo}m`}</span>
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -2318,9 +2722,20 @@ export default function RestaurantDashboard() {
 
                         {/* Customer / Payment detail */}
                         <div className="flex items-center justify-between text-xs py-2 border-b border-slate-50 gap-2">
-                          <span className="text-slate-500 truncate">
-                            Diner: <strong className="text-slate-800">{order.customerName || "Walk-in Guest"}</strong>
-                          </span>
+                          <div className="flex flex-col min-w-0">
+                            <span className="text-slate-500 truncate">
+                              Diner: <strong className="text-slate-800">{order.customerName || "Walk-in Guest"}</strong>
+                            </span>
+                            {order.customerPhone && (
+                              <a
+                                href={`tel:${order.customerPhone}`}
+                                className="text-[11px] font-semibold text-slate-500 hover:text-orange-600 flex items-center gap-1 mt-0.5"
+                                title="Call Diner"
+                              >
+                                <span>📞 {order.customerPhone}</span>
+                              </a>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={() => handleUpdatePaymentStatus(order.id, order.paymentStatus === "paid" ? "unpaid" : "paid")}
@@ -2444,6 +2859,42 @@ export default function RestaurantDashboard() {
         {/* ===================== TAB 2: BUSINESS ANALYTICS (OWNER ONLY) ===================== */}
         {isOwner && activeTab === "analytics" && (
           <div className="space-y-6">
+            {/* Analytics Header: Date Range Filter Bar & CSV Export Button */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto no-scrollbar">
+                {[
+                  { id: "today", label: "Today" },
+                  { id: "yesterday", label: "Yesterday" },
+                  { id: "this_week", label: "This Week" },
+                  { id: "this_month", label: "This Month" },
+                  { id: "all", label: "All Time" },
+                ].map((range) => (
+                  <button
+                    key={range.id}
+                    type="button"
+                    onClick={() => setAnalyticsTimeRange(range.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                      analyticsTimeRange === range.id
+                        ? "bg-slate-900 text-white shadow-sm"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportSalesReport}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap"
+                title="Download CSV sales report matching active date range"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export Sales CSV</span>
+              </button>
+            </div>
+
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
@@ -2452,8 +2903,7 @@ export default function RestaurantDashboard() {
                   <DollarSign className="w-5 h-5 text-emerald-500" />
                 </div>
                 <div className="text-2xl font-black text-slate-900">
-                  {restaurant.currencySymbol}
-                  {analyticsData.totalRevenue}
+                  {formatCurrency(analyticsData.totalRevenue)}
                 </div>
                 <p className="text-[11px] text-emerald-600 font-medium mt-1">Across all tables</p>
               </div>
@@ -2473,8 +2923,7 @@ export default function RestaurantDashboard() {
                   <TrendingUp className="w-5 h-5 text-sky-500" />
                 </div>
                 <div className="text-2xl font-black text-slate-900">
-                  {restaurant.currencySymbol}
-                  {analyticsData.avgOrderValue}
+                  {formatCurrency(analyticsData.avgOrderValue)}
                 </div>
                 <p className="text-[11px] text-sky-600 font-medium mt-1">Per dining table</p>
               </div>
@@ -2511,11 +2960,68 @@ export default function RestaurantDashboard() {
 
                     <div className="text-right">
                       <div className="font-extrabold text-xs text-slate-900">{dish.count} ordered</div>
-                      <div className="text-[10px] text-slate-400">{restaurant.currencySymbol}{dish.revenue} earned</div>
+                      <div className="text-[10px] text-slate-400">{formatCurrency(dish.revenue)} earned</div>
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Customer Reviews & Diner Feedback Card */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <h3 className="font-bold text-base text-slate-900">Customer Reviews &amp; Diner Feedback</h3>
+                </div>
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                  {customerReviews.length} Reviews
+                </span>
+              </div>
+
+              {customerReviews.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  No customer reviews recorded yet. Diners can rate their meal and leave feedback after dining.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {customerReviews.map((rev) => (
+                    <div key={rev.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <span className="font-bold text-xs text-slate-900">{rev.customerName || "Diner Guest"}</span>
+                            <span className="ml-2 text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-semibold">
+                              {rev.tableNumber}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star
+                                key={star}
+                                className={`w-3.5 h-3.5 ${
+                                  star <= (rev.rating || 5)
+                                    ? "text-amber-400 fill-amber-400"
+                                    : "text-slate-200 fill-slate-200"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        {rev.reviewFeedback && (
+                          <p className="text-xs text-slate-600 italic mt-1 leading-relaxed">
+                            &ldquo;{rev.reviewFeedback}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-200/60">
+                        <span>{new Date(rev.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        <span>Order #{rev.id.slice(-4)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2548,14 +3054,65 @@ export default function RestaurantDashboard() {
                 </div>
 
                 {isOwner && (
-                  <button
-                    onClick={() => setIsAddDishOpen(true)}
-                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20"
-                  >
-                    <Plus className="w-4 h-4" /> Add New Dish
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsCategoryModalOpen(true)}
+                      className="bg-white hover:bg-orange-50 text-orange-600 border border-orange-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" /> Manage Categories
+                    </button>
+                    <button
+                      onClick={() => setIsAddDishOpen(true)}
+                      className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20"
+                    >
+                      <Plus className="w-4 h-4" /> Add New Dish
+                    </button>
+                  </div>
                 )}
               </div>
+            </div>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setSelectedCategoryFilter("all")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
+                  selectedCategoryFilter === "all"
+                    ? "bg-slate-900 text-white shadow-sm"
+                    : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                <span>All Dishes</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  selectedCategoryFilter === "all" ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
+                }`}>
+                  {restaurant.menuItems.length}
+                </span>
+              </button>
+
+              {restaurant.categories.map((cat) => {
+                const count = restaurant.menuItems.filter((it) => it.categoryId === cat.id).length;
+                const isSelected = selectedCategoryFilter === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategoryFilter(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
+                      isSelected
+                        ? "bg-orange-600 text-white shadow-sm shadow-orange-600/20 border-orange-600"
+                        : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.name}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                      isSelected ? "bg-orange-700 text-orange-100" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Menu Items Table */}
@@ -2574,7 +3131,11 @@ export default function RestaurantDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800">
                   {restaurant.menuItems
-                    .filter((it) => it.name.toLowerCase().includes(menuSearch.toLowerCase()))
+                    .filter((it) => {
+                      const matchesSearch = it.name.toLowerCase().includes(menuSearch.toLowerCase());
+                      const matchesCategory = selectedCategoryFilter === "all" || it.categoryId === selectedCategoryFilter;
+                      return matchesSearch && matchesCategory;
+                    })
                     .map((item) => {
                       const category = restaurant.categories.find((c) => c.id === item.categoryId);
                       const isUnlimited = item.stockCount === null || item.stockCount === undefined || item.stockCount < 0;
@@ -2691,13 +3252,24 @@ export default function RestaurantDashboard() {
 
                           {isOwner && (
                             <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => handleDeleteDish(item.id, item.name)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                                title={`Delete "${item.name}"`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditDishModal(item)}
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 transition"
+                                  title={`Edit "${item.name}"`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDish(item.id, item.name)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                                  title={`Delete "${item.name}"`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -2770,7 +3342,13 @@ export default function RestaurantDashboard() {
                         {restaurant.name}
                       </span>
                       <h3 className="text-xl font-black text-slate-900 mt-1">{table.tableNumber}</h3>
-                      <p className="text-[11px] text-slate-400">Scan to View Menu & Order</p>
+                      <div className="flex items-center justify-center gap-1.5 mt-1">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                          <Users className="w-3 h-3 text-slate-400" />
+                          {table.seats || 4} Seats
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Scan to View Menu & Order</p>
                     </div>
 
                     {/* Live Table Status Badge & Vacate Action */}
@@ -2860,6 +3438,15 @@ export default function RestaurantDashboard() {
                             <Download className="w-3.5 h-3.5" />
                           </a>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTable(table)}
+                          className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
+                          title={`Edit ${table.tableNumber}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
 
                         <button
                           type="button"
@@ -3230,6 +3817,45 @@ export default function RestaurantDashboard() {
                 <p className="text-[10px] text-slate-400 mt-1">
                   Customers who select &ldquo;Pay via UPI&rdquo; will be prompted to scan or pay directly to this VPA.
                 </p>
+
+                {/* Live Diner UPI QR Preview */}
+                {settingsUpi.trim() ? (
+                  <div className="mt-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
+                    <div className="p-2.5 bg-white rounded-xl shadow-xs border border-slate-200 shrink-0">
+                      {upiPreviewQr ? (
+                        <img
+                          src={upiPreviewQr}
+                          alt={`UPI QR for ${settingsUpi.trim()}`}
+                          className="w-28 h-28 object-contain rounded-lg"
+                        />
+                      ) : (
+                        <div className="w-28 h-28 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center text-[10px] text-slate-400">
+                          Generating UPI QR...
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-left space-y-1 w-full">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Live Diner UPI Preview
+                        </span>
+                        <span className="text-[11px] font-mono font-bold text-slate-800">{settingsUpi.trim()}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        This is the live QR code diners scan to pay directly at the table. Fully compatible with Google Pay, PhonePe, Paytm, BHIM, and bank UPI apps.
+                      </p>
+                      <p className="text-[10px] font-mono text-slate-400 break-all bg-white p-1.5 rounded border border-slate-100">
+                        upi://pay?pa={settingsUpi.trim()}&amp;pn={encodeURIComponent(settingsName || restaurant?.name || "Restaurant")}&amp;cu=INR
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px] flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                    <span>Enter a valid UPI ID (e.g. <code>restaurant@icici</code>) above to enable table payments and view the diner QR preview.</span>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3262,7 +3888,7 @@ export default function RestaurantDashboard() {
                     <span>Security &amp; Dashboard Credentials</span>
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Update your owner password, email, and staff 4-digit PIN stored directly in SQLite.
+                    Update your owner password, email, and staff 4-digit PIN stored securely in Cloud PostgreSQL.
                   </p>
                 </div>
 
@@ -3392,8 +4018,15 @@ export default function RestaurantDashboard() {
               </div>
 
               <div className="flex justify-between text-[11px] py-1 border-b border-dashed border-slate-300">
-                <span>Diner: {selectedKotOrder.customerName || "Walk-in Guest"}</span>
-                <span className="font-bold uppercase text-slate-900">
+                <div>
+                  <div>Diner: {selectedKotOrder.customerName || "Walk-in Guest"}</div>
+                  {selectedKotOrder.customerPhone && (
+                    <div className="text-[10px] font-mono text-slate-700 mt-0.5">
+                      Phone: {selectedKotOrder.customerPhone}
+                    </div>
+                  )}
+                </div>
+                <span className="font-bold uppercase text-slate-900 self-center">
                   {selectedKotOrder.paymentStatus === "paid" ? "PAID" : "UNPAID"} ({selectedKotOrder.paymentMethod?.replace("_", " ")})
                 </span>
               </div>
@@ -3522,7 +4155,7 @@ export default function RestaurantDashboard() {
       {/* ===================== MODAL: ADD NEW DISH ===================== */}
       {isAddDishOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <h3 className="font-bold text-base text-slate-900">Add New Food Dish</h3>
               <button
@@ -3792,6 +4425,390 @@ export default function RestaurantDashboard() {
         </div>
       )}
 
+      {/* ===================== MODAL: EDIT DISH ===================== */}
+      {editingDish && restaurant && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Edit Food Dish</h3>
+                <p className="text-[11px] text-slate-400">Update pricing, category, portion stock &amp; variants</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingDish(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditDishSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Dish Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Tandoori Soya Chaap"
+                  value={editDishName}
+                  onChange={(e) => setEditDishName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Price ({restaurant.currencySymbol}) *</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="250"
+                    value={editDishPrice}
+                    onChange={(e) => setEditDishPrice(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Category</label>
+                  <select
+                    value={editDishCategory}
+                    onChange={(e) => setEditDishCategory(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                  >
+                    {restaurant.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.icon} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Dietary Status</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditDishIsVeg(true)}
+                    className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 border transition ${
+                      editDishIsVeg
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-800"
+                        : "bg-slate-50 border-slate-200 text-slate-500"
+                    }`}
+                  >
+                    <span>🟢 Veg (शाकाहारी)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditDishIsVeg(false)}
+                    className={`py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 border transition ${
+                      !editDishIsVeg
+                        ? "bg-red-50 border-red-500 text-red-800"
+                        : "bg-slate-50 border-slate-200 text-slate-500"
+                    }`}
+                  >
+                    <span>🔴 Non-Veg (माँसाहारी)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stock Management */}
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Available Portions</label>
+                  <input
+                    type="number"
+                    placeholder="-1 for unlimited"
+                    value={editDishStock}
+                    onChange={(e) => setEditDishStock(e.target.value)}
+                    className="w-full bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">-1 = Unlimited</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Low Stock Alert</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editDishLowThreshold}
+                    onChange={(e) => setEditDishLowThreshold(Number(e.target.value))}
+                    className="w-full bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Threshold</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  placeholder="Freshly prepared with authentic whole spices..."
+                  value={editDishDesc}
+                  onChange={(e) => setEditDishDesc(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {/* Portion Sizes / Variants */}
+              <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50/50">
+                <label className="block font-bold text-slate-800 mb-1">Portion Sizes / Variants (Half/Full)</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Size (e.g. Half, Full)"
+                    value={editVariantInputName}
+                    onChange={(e) => setEditVariantInputName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Price"
+                    value={editVariantInputPrice}
+                    onChange={(e) => setEditVariantInputPrice(e.target.value)}
+                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editVariantInputName.trim() && editVariantInputPrice) {
+                        setEditDishVariants([
+                          ...editDishVariants,
+                          { id: `v-${Date.now()}`, name: editVariantInputName.trim(), price: Number(editVariantInputPrice) },
+                        ]);
+                        setEditVariantInputName("");
+                        setEditVariantInputPrice("");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-orange-600 text-white rounded-xl font-bold text-xs hover:bg-orange-700 shrink-0"
+                  >
+                    + Add Size
+                  </button>
+                </div>
+                {editDishVariants.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {editDishVariants.map((v, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-100 text-orange-900 text-[11px] font-bold border border-orange-200">
+                        {v.name} ({restaurant.currencySymbol}{v.price})
+                        <button
+                          type="button"
+                          onClick={() => setEditDishVariants(editDishVariants.filter((_, idx) => idx !== i))}
+                          className="hover:text-red-700 ml-1"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Addons */}
+              <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50/50">
+                <label className="block font-bold text-slate-800 mb-1">Add-ons / Extras (Extra Cheese, Dips)</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Addon (e.g. Extra Cheese)"
+                    value={editAddonInputName}
+                    onChange={(e) => setEditAddonInputName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Extra ₹"
+                    value={editAddonInputPrice}
+                    onChange={(e) => setEditAddonInputPrice(e.target.value)}
+                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editAddonInputName.trim() && editAddonInputPrice) {
+                        setEditDishAddons([
+                          ...editDishAddons,
+                          { id: `a-${Date.now()}`, name: editAddonInputName.trim(), price: Number(editAddonInputPrice) },
+                        ]);
+                        setEditAddonInputName("");
+                        setEditAddonInputPrice("");
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold text-xs hover:bg-sky-700 shrink-0"
+                  >
+                    + Add Extra
+                  </button>
+                </div>
+                {editDishAddons.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {editDishAddons.map((a, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-100 text-sky-900 text-[11px] font-bold border border-sky-200">
+                        {a.name} (+{restaurant.currencySymbol}{a.price})
+                        <button
+                          type="button"
+                          onClick={() => setEditDishAddons(editDishAddons.filter((_, idx) => idx !== i))}
+                          className="hover:text-red-700 ml-1"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Image URL</label>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={editDishImage}
+                  onChange={(e) => setEditDishImage(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingDish(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEditDish}
+                  className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50 transition"
+                >
+                  {isSubmittingEditDish ? "Saving Changes..." : "Save Dish Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: MANAGE CATEGORIES ===================== */}
+      {isCategoryModalOpen && restaurant && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Manage Menu Categories</h3>
+                <p className="text-[11px] text-slate-400">Add, organize, or remove menu sections</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Create New Category Form */}
+            <form onSubmit={handleAddCategorySubmit} className="space-y-3.5 mb-6 p-4 bg-orange-50/60 rounded-2xl border border-orange-200/80">
+              <h4 className="font-bold text-xs text-orange-950 flex items-center gap-1.5">
+                <Plus className="w-3.5 h-3.5 text-orange-600" />
+                <span>Add New Category</span>
+              </h4>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Pick an Icon</label>
+                <div className="flex flex-wrap gap-1.5 p-2 bg-white rounded-xl border border-orange-200 max-h-24 overflow-y-auto">
+                  {CATEGORY_ICONS_PRESET.map((icon, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setNewCategoryIcon(icon)}
+                      className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center transition ${
+                        newCategoryIcon === icon
+                          ? "bg-orange-500 text-white scale-110 shadow-xs"
+                          : "hover:bg-slate-100 text-slate-800"
+                      }`}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">Category Name *</label>
+                <div className="flex gap-2">
+                  <span className="w-9 h-9 bg-white border border-slate-200 rounded-xl flex items-center justify-center text-base shrink-0 shadow-xs">
+                    {newCategoryIcon}
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Woodfired Pizzas, Desserts"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-slate-900 font-semibold text-xs focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSubmittingCategory}
+                    className="px-3.5 py-1.5 bg-orange-600 text-white rounded-xl font-bold text-xs hover:bg-orange-700 disabled:opacity-50 shrink-0"
+                  >
+                    {isSubmittingCategory ? "Adding..." : "+ Create"}
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Existing Categories Directory */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-800">Current Categories ({restaurant.categories.length})</span>
+                <span className="text-[10px] text-slate-400">Total dishes assigned</span>
+              </div>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {restaurant.categories.map((cat) => {
+                  const dishCount = restaurant.menuItems.filter((it) => it.categoryId === cat.id).length;
+                  return (
+                    <div
+                      key={cat.id}
+                      className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">{cat.icon}</span>
+                        <div>
+                          <div className="font-bold text-xs text-slate-900">{cat.name}</div>
+                          <div className="text-[10px] text-slate-400">{dishCount} dishes in this category</div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        title={`Delete category "${cat.name}"`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCategoryModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-200 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===================== MODAL: ADD NEW TABLE ===================== */}
       {isAddTableOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -3845,6 +4862,70 @@ export default function RestaurantDashboard() {
                   className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50"
                 >
                   {isSubmittingTable ? "Creating..." : "Generate Table QR"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: EDIT TABLE ===================== */}
+      {editingTable && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="font-bold text-base text-slate-900">Edit Table Details</h3>
+                <p className="text-[11px] text-slate-400">Update table name &amp; seating capacity</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTable(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditTableSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Table Name / Identifier *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Rooftop VIP, Booth 3, Table 5"
+                  value={editTableNum}
+                  onChange={(e) => setEditTableNum(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Seating Capacity</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={editTableSeats}
+                  onChange={(e) => setEditTableSeats(Number(e.target.value))}
+                  className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-semibold focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTable(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingTable}
+                  className="px-5 py-2 bg-orange-600 text-white rounded-xl font-bold shadow hover:bg-orange-700 disabled:opacity-50 transition"
+                >
+                  {isUpdatingTable ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>

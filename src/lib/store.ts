@@ -781,8 +781,20 @@ export const updateSuperAdminRestaurant = async (
 
 export const deleteRestaurant = async (restaurantId: string) => {
   try {
-    // Safe cascading delete transaction for SQLite
+    // Safe cascading delete transaction
     await prisma.$transaction([
+      prisma.tableCartItem.deleteMany({
+        where: { cart: { restaurantId } },
+      }),
+      prisma.tableDiner.deleteMany({
+        where: { cart: { restaurantId } },
+      }),
+      prisma.tableCart.deleteMany({
+        where: { restaurantId },
+      }),
+      prisma.staff.deleteMany({
+        where: { restaurantId },
+      }),
       prisma.orderItem.deleteMany({
         where: { order: { restaurantId } },
       }),

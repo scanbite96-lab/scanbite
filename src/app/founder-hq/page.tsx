@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import QRCode from "qrcode";
 import { 
   Building2, 
   TrendingUp, 
@@ -577,6 +576,9 @@ export default function SuperAdminDashboard() {
         const tables: Array<{ id: string; tableNumber: string; seats: number }> = await res.json();
         const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
         
+        const mod = await import("qrcode");
+        const QRCode = mod.default || mod;
+
         const qrsWithUrls: TableQrItem[] = await Promise.all(
           tables.map(async (t) => {
             const tableMenuUrl = `${origin}/r/${restaurant.slug}/t/${t.id}`;

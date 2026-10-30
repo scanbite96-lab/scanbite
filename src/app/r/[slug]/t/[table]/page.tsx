@@ -100,6 +100,7 @@ export default function CustomerTableMenu() {
 
   // Table active orders & Rating state
   const [tableOrders, setTableOrders] = useState<Order[]>([]);
+  const [showUpiForOrder, setShowUpiForOrder] = useState<Record<string, boolean>>({});
   const [ratingsMap, setRatingsMap] = useState<Record<string, number>>({});
   const [submittedRatingMap, setSubmittedRatingMap] = useState<Record<string, boolean>>({});
   const previousStatusMap = useRef<Record<string, string>>({});
@@ -187,16 +188,17 @@ export default function CustomerTableMenu() {
     setDinerId(savedId);
 
     const savedName = localStorage.getItem("scanbite_diner_name");
-    if (savedName) {
+    if (savedName && !savedName.startsWith("Diner ")) {
       setDinerName(savedName);
       setTempDinerName(savedName);
       setCustomerName(savedName);
     } else {
-      const defaultName = `Diner ${Math.floor(Math.random() * 89 + 10)}`;
-      setDinerName(defaultName);
-      setTempDinerName(defaultName);
-      setCustomerName(defaultName);
-      localStorage.setItem("scanbite_diner_name", defaultName);
+      setDinerName("");
+      setTempDinerName("");
+      setCustomerName("");
+      try {
+        localStorage.removeItem("scanbite_diner_name");
+      } catch {}
     }
 
     const storageKey = `scanbite_cart_${slug}_${tableParam}`;
@@ -917,6 +919,28 @@ export default function CustomerTableMenu() {
     }
   };
 
+  // Reset/Vacate Table for new customer or fresh session
+  const handleResetTableSession = async () => {
+    if (!restaurant || !currentTable) return;
+    try {
+      await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "vacate_table",
+          restaurantId: restaurant.id,
+          tableId: currentTable.id,
+        }),
+      });
+    } catch {
+      // ignore
+    }
+    clearEntireCart();
+    setTableOrders([]);
+    setIsOrdersOpen(false);
+    showToast(lang === "hi" ? "✨ टेबल खाली कर दी गई है! नए सिरे से मेन्यू तैयार है 🍽️" : "✨ Table reset! Fresh menu ready for new order 🍽️");
+  };
+
   // Category counts map
   const categoryCounts = useMemo(() => {
     if (!restaurant) return {};
@@ -1078,13 +1102,16 @@ export default function CustomerTableMenu() {
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200/60 flex items-center gap-1">
+                  <span>📍 {currentTable?.tableNumber}</span>
+                </span>
                 <button
+                  type="button"
                   onClick={() => setIsTablePickerOpen(true)}
-                  className="text-xs font-bold uppercase tracking-wider text-orange-600 bg-orange-50 hover:bg-orange-100 px-2.5 py-0.5 rounded-md flex items-center gap-1 transition border border-orange-200/60"
+                  className="text-[10px] text-slate-400 hover:text-orange-600 underline transition"
                   title="Switch Table"
                 >
-                  <span>{currentTable?.tableNumber}</span>
-                  <span className="text-[9px] text-orange-500">▼</span>
+                  (change)
                 </button>
               </div>
               <h1 className="text-lg font-bold text-slate-900 leading-tight mt-0.5">{restaurant.name}</h1>
@@ -1154,52 +1181,77 @@ export default function CustomerTableMenu() {
           </div>
 
           {/* Group Diners & Live Table Cart Bar */}
-          <div className="mt-3 pt-3 border-t border-slate-100">
-            <div className="bg-gradient-to-r from-sky-50 via-sky-50/60 to-indigo-50/50 border border-sky-100 rounded-2xl p-3 shadow-xs">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-sky-600" />
-                  <span className="text-xs font-black text-slate-800">
-                    {t.groupOrdering}
-                  </span>
-                  <span className="text-[10px] font-extrabold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded-full border border-sky-200">
-                    {tableCart?.diners?.length || 1} {t.peopleCount}
-                  </span>
+          <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+            {tableCart?.diners && tableCart.diners.length > 1 ? (
+              <div className="bg-gradient-to-r from-sky-50 via-sky-50/60 to-indigo-50/50 border border-sky-100 rounded-2xl p-3 shadow-xs">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-sky-600" />
+                    <span className="text-xs font-black text-slate-800">
+                      {t.groupOrdering}
+                    </span>
+                    <span className="text-[10px] font-extrabold bg-sky-100 text-sky-800 px-1.5 py-0.5 rounded-full border border-sky-200">
+                      {tableCart.diners.length} {t.peopleCount}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsDinerNameModalOpen(true)}
+                    className="text-[11px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 transition"
+                  >
+                    <span className="text-slate-500 font-medium">{t.joinedAs}</span>
+                    <span className="underline font-black text-sky-800">{dinerName || "Set Name"}</span>
+                    <span className="text-[10px]">✏️</span>
+                  </button>
                 </div>
+
+                {/* Diners list chips */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {tableCart.diners.map((d) => {
+                    const isMe = d.dinerId === dinerId || d.name === dinerName;
+                    return (
+                      <span
+                        key={d.dinerId}
+                        className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border transition ${
+                          isMe
+                            ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+                            : "bg-white text-slate-700 border-sky-200"
+                        }`}
+                      >
+                        <span>👤 {d.name}</span>
+                        {isMe && <span className="text-[9px] opacity-90 font-medium">(You)</span>}
+                      </span>
+                    );
+                  })}
+
+                  {/* Invite Friends / Share Table Link button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = typeof window !== "undefined" ? window.location.href : "";
+                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                        navigator.clipboard.writeText(url);
+                        showToast(lang === "hi" ? "🔗 टेबल लिंक कॉपी हो गया! दोस्तों को भेजें।" : "🔗 Table link copied! Share with your table friends.");
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-sky-700 border border-dashed border-sky-300 hover:bg-sky-50 active:scale-95 transition"
+                  >
+                    <Share2 className="w-2.5 h-2.5" />
+                    <span>{lang === "hi" ? "+ साथी जोड़ें" : "+ Invite"}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between text-xs py-1 px-1">
                 <button
                   type="button"
                   onClick={() => setIsDinerNameModalOpen(true)}
-                  className="text-[11px] font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 transition"
+                  className="text-[11px] text-slate-600 hover:text-slate-900 flex items-center gap-1"
                 >
-                  <span className="text-slate-500 font-medium">{t.joinedAs}</span>
-                  <span className="underline font-black text-sky-800">{dinerName || "Set Name"}</span>
+                  <span className="text-slate-400">👤 {lang === "hi" ? "ऑर्डर कर्ता:" : "Ordering as:"}</span>
+                  <span className="font-bold text-slate-800 underline">{dinerName || (lang === "hi" ? "आप (नाम जोड़ें)" : "You (Set Name)")}</span>
                   <span className="text-[10px]">✏️</span>
                 </button>
-              </div>
-
-              {/* Diners list chips */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {(tableCart?.diners && tableCart.diners.length > 0
-                  ? tableCart.diners
-                  : [{ dinerId, name: dinerName || "You" }]
-                ).map((d) => {
-                  const isMe = d.dinerId === dinerId || d.name === dinerName;
-                  return (
-                    <span
-                      key={d.dinerId}
-                      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border transition ${
-                        isMe
-                          ? "bg-sky-600 text-white border-sky-600 shadow-xs"
-                          : "bg-white text-slate-700 border-sky-200"
-                      }`}
-                    >
-                      <span>👤 {d.name}</span>
-                      {isMe && <span className="text-[9px] opacity-90 font-medium">(You)</span>}
-                    </span>
-                  );
-                })}
-
-                {/* Invite Friends / Share Table Link button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1209,13 +1261,13 @@ export default function CustomerTableMenu() {
                       showToast(lang === "hi" ? "🔗 टेबल लिंक कॉपी हो गया! दोस्तों को भेजें।" : "🔗 Table link copied! Share with your table friends.");
                     }
                   }}
-                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-sky-700 border border-dashed border-sky-300 hover:bg-sky-50 active:scale-95 transition"
+                  className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/70 transition"
                 >
-                  <Share2 className="w-2.5 h-2.5" />
-                  <span>{lang === "hi" ? "+ साथी जोड़ें" : "+ Invite"}</span>
+                  <Users className="w-3 h-3 text-sky-600" />
+                  <span>{lang === "hi" ? "👥 ग्रुप ऑर्डर (+साथी जोड़ें)" : "👥 Group Order (+Invite)"}</span>
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </section>
@@ -1232,7 +1284,7 @@ export default function CustomerTableMenu() {
                 placeholder={t.searchPlaceholder}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-100 text-slate-800 placeholder-slate-400 pl-9 pr-8 py-2 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition border border-slate-200/50"
+                className="w-full bg-slate-100 text-slate-800 placeholder-slate-400 pl-9 pr-8 py-2 text-base sm:text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:bg-white transition border border-slate-200/50"
               />
               {searchQuery && (
                 <button
@@ -1352,7 +1404,7 @@ export default function CustomerTableMenu() {
             return (
               <Fragment key={item.id}>
                 {isNewCategory && currentCat && (
-                  <div className="pt-2 pb-0.5 flex items-center justify-between border-b border-slate-200/70 mb-1 scroll-mt-28">
+                  <div className="pt-2 pb-0.5 flex items-center justify-between border-b border-slate-200/70 mb-1 scroll-mt-44">
                     <div className="flex items-center gap-1.5 font-extrabold text-xs uppercase tracking-wider text-slate-700">
                       <span>{currentCat.icon}</span>
                       <span>{currentCat.name}</span>
@@ -1363,7 +1415,7 @@ export default function CustomerTableMenu() {
                   </div>
                 )}
                 <div
-                  className={`bg-white rounded-2xl p-3.5 border transition shadow-xs flex gap-3.5 scroll-mt-32 ${
+                  className={`bg-white rounded-2xl p-3.5 border transition shadow-xs flex gap-3.5 scroll-mt-44 ${
                     item.isAvailable ? "border-slate-200/80 hover:border-orange-200" : "border-slate-200 opacity-60 bg-slate-50"
                   }`}
                 >
@@ -1506,7 +1558,7 @@ export default function CustomerTableMenu() {
 
       {/* Floating Bottom Cart Bar */}
       {cartCount > 0 && (
-        <div className="fixed bottom-3 left-4 right-4 z-40 max-w-md mx-auto animate-in slide-in-from-bottom">
+        <div className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] left-4 right-4 z-40 max-w-md mx-auto animate-in slide-in-from-bottom">
           <div className="bg-slate-900 text-white rounded-2xl p-3.5 shadow-2xl flex items-center justify-between border border-slate-800">
             <div>
               <div className="text-xs text-slate-400">
@@ -1638,7 +1690,7 @@ export default function CustomerTableMenu() {
                         placeholder={t.cookingNotePlaceholder}
                         value={it.notes || ""}
                         onChange={(e) => updateSharedCartItem(it.id, it.quantity, e.target.value)}
-                        className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
+                        className="w-full mt-1.5 bg-slate-50 text-base sm:text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
                       />
                     </div>
                   );
@@ -1709,7 +1761,7 @@ export default function CustomerTableMenu() {
                       placeholder={t.cookingNotePlaceholder}
                       value={notes}
                       onChange={(e) => updateItemNotes(cartKey, e.target.value)}
-                      className="w-full mt-1.5 bg-slate-50 text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
+                      className="w-full mt-1.5 bg-slate-50 text-base sm:text-[11px] text-slate-700 placeholder-slate-400 px-2.5 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-orange-500"
                     />
                   </div>
                 ))
@@ -1767,7 +1819,7 @@ export default function CustomerTableMenu() {
                       placeholder={t.couponPlaceholder}
                       value={couponInput}
                       onChange={(e) => setCouponInput(e.target.value)}
-                      className="w-full pl-8 pr-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg uppercase font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                      className="w-full pl-8 pr-2 py-1.5 text-base sm:text-xs bg-slate-50 border border-slate-200 rounded-lg uppercase font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
                     />
                   </div>
                   <button
@@ -1823,14 +1875,14 @@ export default function CustomerTableMenu() {
                     placeholder={t.yourName}
                     value={customerName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    className="bg-slate-50 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    className="bg-slate-50 text-base sm:text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
                   <input
                     type="tel"
                     placeholder={t.phoneForBill}
                     value={customerPhone}
                     onChange={(e) => handlePhoneChange(e.target.value)}
-                    className="bg-slate-50 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                    className="bg-slate-50 text-base sm:text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
                 </div>
               </div>
@@ -1918,7 +1970,7 @@ export default function CustomerTableMenu() {
             </div>
 
             {/* Send to Kitchen Button */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50">
+            <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] border-t border-slate-100 bg-slate-50">
               <button
                 onClick={handlePlaceOrder}
                 disabled={isPlacingOrder}
@@ -1947,12 +1999,23 @@ export default function CustomerTableMenu() {
                 <h2 className="font-bold text-slate-900 text-base">{t.liveOrdersFor} {currentTable?.tableNumber}</h2>
                 <p className="text-xs text-slate-500">{t.realTimeStatus}</p>
               </div>
-              <button
-                onClick={() => setIsOrdersOpen(false)}
-                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {tableOrders.some((o) => o.status === "served" || o.status === "completed" || o.paymentStatus === "paid") && (
+                  <button
+                    onClick={handleResetTableSession}
+                    title="Start fresh session / vacate table"
+                    className="text-[11px] font-bold text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-2.5 py-1 rounded-lg border border-slate-200 transition flex items-center gap-1 shadow-2xs"
+                  >
+                    <span>🔄 {lang === "hi" ? "टेबल खाली करें" : "Reset Table"}</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsOrdersOpen(false)}
+                  className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="p-4 overflow-y-auto space-y-4 flex-1">
@@ -2087,14 +2150,31 @@ export default function CustomerTableMenu() {
                           </p>
                           <button
                             type="button"
-                            onClick={() => {
-                              setIsOrdersOpen(false);
-                              showToast(lang === "hi" ? "मेन्यू तैयार है! नई डिशेज देखें 🍽️" : "Menu ready! Explore more dishes 🍽️");
-                            }}
+                            onClick={handleResetTableSession}
                             className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
                           >
                             <UtensilsCrossed className="w-3.5 h-3.5" />
                             <span>{lang === "hi" ? "नया ऑर्डर शुरू करें / मेन्यू देखें 🍽️" : "Start New Order / Browse Menu 🍽️"}</span>
+                          </button>
+                        </div>
+                      ) : order.paymentMethod === "counter_cash" && !showUpiForOrder[order.id] ? (
+                        <div className="mt-3 p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-center space-y-2">
+                          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-900">
+                            <Receipt className="w-4 h-4 text-amber-600" />
+                            <span>{lang === "hi" ? "बिलिंग काउंटर पर नकद भुगतान करें" : "Pay at Billing Counter (Cash)"}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            {lang === "hi" 
+                              ? `कुल देय राशि: ${restaurant.currencySymbol}${order.total}। कृपया भोजन के बाद काउंटर पर नकद भुगतान करें।` 
+                              : `Total payable: ${restaurant.currencySymbol}${order.total}. Please settle bill at the counter after your meal.`}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setShowUpiForOrder((prev) => ({ ...prev, [order.id]: true }))}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 underline pt-1"
+                          >
+                            <Split className="w-3.5 h-3.5" />
+                            <span>{lang === "hi" ? "या अभी UPI / ऑनलाइन QR से भुगतान करें →" : "Or pay via UPI / QR code instead →"}</span>
                           </button>
                         </div>
                       ) : (
@@ -2169,7 +2249,7 @@ export default function CustomerTableMenu() {
             </div>
 
             {/* Bottom Actions: Order More Dishes + Close */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+            <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-slate-50 border-t border-slate-100 flex gap-2">
               <button
                 onClick={() => setIsOrdersOpen(false)}
                 className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-1"
@@ -2237,7 +2317,7 @@ export default function CustomerTableMenu() {
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100">
+            <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-slate-50 border-t border-slate-100">
               <button
                 onClick={() => setIsTablePickerOpen(false)}
                 className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-black transition"
@@ -2392,7 +2472,7 @@ export default function CustomerTableMenu() {
             </div>
 
             {/* Footer: Stepper + Total Price + Add to Cart button */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center gap-3">
+            <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] bg-slate-50 border-t border-slate-100 flex items-center gap-3">
               {/* Quantity Stepper */}
               <div className="flex items-center bg-white border border-slate-200 rounded-xl shadow-xs font-extrabold text-xs">
                 <button
@@ -2461,18 +2541,18 @@ export default function CustomerTableMenu() {
               placeholder={lang === "hi" ? "जैसे: आकाश, राहुल, प्रिया" : "e.g. Aakash, Rahul, Priya"}
               value={tempDinerName}
               onChange={(e) => setTempDinerName(e.target.value)}
-              className="w-full text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-4"
+              className="w-full text-base sm:text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-4"
               autoFocus
             />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  const trimmed = tempDinerName.trim() || `Diner ${Math.floor(Math.random() * 89 + 10)}`;
+                  const trimmed = tempDinerName.trim();
                   handleNameChange(trimmed);
-                  joinTableCart(trimmed);
+                  joinTableCart(trimmed || undefined);
                   setIsDinerNameModalOpen(false);
-                  showToast(lang === "hi" ? `✅ स्वागत है ${trimmed}!` : `✅ Welcome, ${trimmed}!`);
+                  showToast(trimmed ? (lang === "hi" ? `✅ स्वागत है ${trimmed}!` : `✅ Welcome, ${trimmed}!`) : (lang === "hi" ? "नाम अपडेट हुआ" : "Name updated"));
                 }}
                 className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95"
               >

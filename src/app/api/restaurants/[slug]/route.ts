@@ -60,6 +60,18 @@ export async function PATCH(
     const body = await request.json();
     const { name, tagline, phone, address, currencySymbol, taxRatePercent, upiId } = body;
 
+    if (isDemo && (!session && !isSuperAdmin)) {
+      if (name) DEMO_RESTAURANT.name = name;
+      if (tagline !== undefined) DEMO_RESTAURANT.tagline = tagline;
+      if (phone !== undefined) DEMO_RESTAURANT.phone = phone;
+      if (address !== undefined) DEMO_RESTAURANT.address = address;
+      if (currencySymbol) DEMO_RESTAURANT.currencySymbol = currencySymbol;
+      if (taxRatePercent !== undefined) DEMO_RESTAURANT.taxRatePercent = Number(taxRatePercent);
+      if (upiId !== undefined) DEMO_RESTAURANT.upiId = upiId;
+      // In-memory demo update only: do not modify real database without auth
+      return NextResponse.json(DEMO_RESTAURANT);
+    }
+
     if (isDemo) {
       if (name) DEMO_RESTAURANT.name = name;
       if (tagline !== undefined) DEMO_RESTAURANT.tagline = tagline;

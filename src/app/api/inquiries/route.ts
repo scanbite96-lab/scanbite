@@ -1,27 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import os from "os";
+import { isSuperAdminRequest } from "@/lib/auth";
 
-const INQUIRIES_FILE = path.join(process.cwd(), "inquiries.json");
+const INQUIRIES_FILE = path.join(os.tmpdir(), "scanbite_inquiries.json");
+const memoryInquiries: any[] = [];
 
-function getInquiries() {
+function getInquiries(): any[] {
   try {
     if (fs.existsSync(INQUIRIES_FILE)) {
-      return JSON.parse(fs.readFileSync(INQUIRIES_FILE, "utf8"));
+      const fileData = JSON.parse(fs.readFileSync(INQUIRIES_FILE, "utf8"));
+      if (Array.isArray(fileData) && fileData.length > 0) {
+        return fileData;
+      }
     }
   } catch {}
-  return [];
+  return memoryInquiries;
 }
 
 function saveInquiry(item: any) {
+  const newRecord = { ...item, id: `inq-${Date.now()}`, createdAt: new Date().toISOString() };
+  memoryInquiries.unshift(newRecord);
+  if (memoryInquiries.length > 100) memoryInquiries.length = 100;
+
   try {
-    const list = getInquiries();
-    list.unshift({ ...item, id: `inq-${Date.now()}`, createdAt: new Date().toISOString() });
-    fs.writeFileSync(INQUIRIES_FILE, JSON.stringify(list.slice(0, 100), null, 2), "utf8");
-  } catch {}
+    fs.writeFileSync(INQUIRIES_FILE, JSON.stringify(memoryInquiries, null, 2), "utf8");
+  } catch {
+    // Graceful fallback to memory array on read-only serverless filesystems
+  }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!isSuperAdminRequest(req)) {
+    return NextResponse.json({ error: "Unauthorized: Super Admin access required." }, { status: 401 });
+  }
   return NextResponse.json({ inquiries: getInquiries() });
 }
 

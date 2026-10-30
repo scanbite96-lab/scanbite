@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+let lastDinerCleanupTime = 0;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -10,6 +12,20 @@ export async function GET(request: NextRequest) {
 
     if (!tableId) {
       return NextResponse.json({ error: "tableId is required" }, { status: 400 });
+    }
+
+    // Auto-clean stale diners (throttled to once per 15 minutes to prevent write-lock storm)
+    const now = Date.now();
+    if (now - lastDinerCleanupTime > 15 * 60 * 1000) {
+      lastDinerCleanupTime = now;
+      try {
+        const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+        await prisma.tableDiner.deleteMany({
+          where: { joinedAt: { lt: twoHoursAgo } },
+        });
+      } catch {
+        // ignore
+      }
     }
 
     let cart = await prisma.tableCart.findUnique({
