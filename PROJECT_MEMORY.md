@@ -77,6 +77,23 @@
    - Diners older than 2 hours are automatically cleaned up in `/api/cart`.
    - Table cart items are automatically cleared when master order is submitted to kitchen.
 
+8. **Comprehensive Full Project Audit & Hardening (Verified Oct 30, 2026):**
+   - **Database & Cascades:** `deleteRestaurant` transaction now completely cascades `tableCartItem`, `tableDiner`, `tableCart`, and `staff` eliminating all orphaned records.
+   - **Security Hardening:**
+     - `PATCH /api/restaurants/[slug]`: Unauthenticated demo requests update in-memory state only, preventing unauthorized modification of live PostgreSQL database records or UPI IDs.
+     - `POST /api/restaurants`: Strips plaintext `password` and `staffPin` before returning 201 Created response.
+     - `GET /api/inquiries`: Gated by `isSuperAdminRequest`; file writes moved to `os.tmpdir()` with in-memory fallback to prevent EROFS crashes on serverless runtimes like Vercel.
+     - `src/lib/auth.ts`: Added token expiration checks (`exp` 7 days), timing-safe comparisons via `crypto.timingSafeEqual`, and guarded master keys.
+   - **Performance:**
+     - `src/app/dashboard/page.tsx`: Memoized table QR code generation using a stable fingerprint string, completely resolving the 4-second CPU and re-render storm.
+     - `src/app/api/cart/route.ts`: Throttled stale diner cleanup to once per 15 minutes, eliminating write-lock congestion during menu browsing.
+     - `src/app/founder-hq/page.tsx`: Dynamically imports `qrcode` inside the modal handler for cleaner code-splitting.
+   - **Mobile Responsiveness & UX:**
+     - All 7 inputs in customer QR ordering (`/r/[slug]/t/[table]`) upgraded to `text-[16px]` to permanently stop iOS Safari auto-zoom.
+     - Safe area insets `env(safe-area-inset-bottom)` added to floating cart bar, cart checkout drawer, live orders drawer, table switcher, and dish customisation drawer.
+     - `src/app/layout.tsx`: Replaced deprecated `<meta name="viewport">` with Next.js 14 `Viewport` export with `viewportFit: "cover"`.
+   - **Verification:** All 17 automated security and performance tests passed (17/17), and full production build compiled all 21 routes with 0 errors.
+
 ---
 
 ## 📋 Next Tasks Backlog (ROADMAP)
