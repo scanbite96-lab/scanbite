@@ -436,6 +436,99 @@ export function getDemoOrders(): Order[] {
   return [...demoOrdersStore];
 }
 
+export function resetDemoOrders(): Order[] {
+  const currentNow = new Date();
+  const getMinutesAgo = (mins: number) => new Date(currentNow.getTime() - mins * 60 * 1000).toISOString();
+  demoOrdersStore = [
+    {
+      id: "ord-101",
+      restaurantId: "rest-001",
+      tableId: "tbl-4",
+      tableNumber: "Table 4",
+      customerName: "Aakash Sharma",
+      customerPhone: "9876543210",
+      subtotal: 690,
+      tax: 35,
+      discount: 0,
+      total: 725,
+      status: "cooking",
+      paymentMethod: "upi_online",
+      paymentStatus: "paid",
+      items: [
+        { menuItemId: "item-1", name: "Paneer Tikka Angara", price: 280, quantity: 1, isVeg: true, notes: "Extra spicy please" },
+        { menuItemId: "item-7", name: "Old Delhi Butter Chicken", price: 410, quantity: 1, isVeg: false },
+      ],
+      createdAt: getMinutesAgo(4),
+      updatedAt: getMinutesAgo(4),
+    },
+    {
+      id: "ord-102",
+      restaurantId: "rest-001",
+      tableId: "tbl-2",
+      tableNumber: "Table 2",
+      customerName: "Priya Patel",
+      customerPhone: "9812345678",
+      subtotal: 580,
+      tax: 29,
+      discount: 50,
+      couponCode: "SAVE50",
+      total: 559,
+      status: "pending",
+      paymentMethod: "counter_cash",
+      paymentStatus: "unpaid",
+      items: [
+        { menuItemId: "item-5", name: "Dal Makhani Grand Special", price: 290, quantity: 1, isVeg: true },
+        { menuItemId: "item-9", name: "Butter Garlic Naan", price: 75, quantity: 2, isVeg: true },
+        { menuItemId: "item-14", name: "Sizzling Brownie with Ice Cream", price: 210, quantity: 1, isVeg: true },
+      ],
+      createdAt: getMinutesAgo(8),
+      updatedAt: getMinutesAgo(8),
+    },
+    {
+      id: "ord-103",
+      restaurantId: "rest-001",
+      tableId: "tbl-1",
+      tableNumber: "Table 1",
+      customerName: "Rohan Verma",
+      customerPhone: "9823456789",
+      subtotal: 300,
+      tax: 15,
+      discount: 0,
+      total: 315,
+      status: "ready",
+      paymentMethod: "upi_online",
+      paymentStatus: "paid",
+      items: [
+        { menuItemId: "item-12", name: "Virgin Mint Mojito", price: 150, quantity: 2, isVeg: true },
+      ],
+      createdAt: getMinutesAgo(14),
+      updatedAt: getMinutesAgo(2),
+    },
+    {
+      id: "ord-104",
+      restaurantId: "rest-001",
+      tableId: "tbl-6",
+      tableNumber: "Patio 1",
+      customerName: "Sameer Khan",
+      customerPhone: "9899887766",
+      subtotal: 550,
+      tax: 28,
+      discount: 0,
+      total: 578,
+      status: "served",
+      paymentMethod: "counter_cash",
+      paymentStatus: "paid",
+      items: [
+        { menuItemId: "item-11", name: "Kolkata Mutton Dum Biryani", price: 460, quantity: 1, isVeg: false },
+        { menuItemId: "item-13", name: "Masala Chaas (Spiced Buttermilk)", price: 90, quantity: 1, isVeg: true },
+      ],
+      createdAt: getMinutesAgo(25),
+      updatedAt: getMinutesAgo(10),
+    },
+  ];
+  return [...demoOrdersStore];
+}
+
 export function getDemoTableOrders(tableId: string): Order[] {
   const cleanNum = tableId.replace(/\D/g, "");
   return demoOrdersStore.filter((o) => {

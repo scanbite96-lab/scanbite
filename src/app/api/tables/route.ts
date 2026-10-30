@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 import { DEMO_RESTAURANT } from "@/lib/demoData";
+import { Table } from "@/types";
 
 export async function GET(request: NextRequest) {
   let restaurantId: string | null = null;
@@ -42,18 +43,30 @@ export async function POST(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
+    const body = await request.json();
+    const { restaurantId, tableNumber, seats } = body;
+
+    if (!restaurantId || !tableNumber) {
+      return NextResponse.json({ error: "Missing required table fields" }, { status: 400 });
+    }
+
+    const isDemo = restaurantId === "rest-001" || restaurantId === "grand-spice";
+
+    if (!session && !isSuperAdmin && !isDemo) {
       return NextResponse.json({ error: "Unauthorized: Please log in as owner to add tables." }, { status: 401 });
     }
     if (session?.role === "staff") {
       return NextResponse.json({ error: "Unauthorized: Staff cannot add tables. Owner access required." }, { status: 403 });
     }
 
-    const body = await request.json();
-    const { restaurantId, tableNumber, seats } = body;
-
-    if (!restaurantId || !tableNumber) {
-      return NextResponse.json({ error: "Missing required table fields" }, { status: 400 });
+    if (isDemo) {
+      const newDemoTable: Table = {
+        id: `tbl-${Date.now()}`,
+        tableNumber: String(tableNumber).trim(),
+        seats: Number(seats) || 4,
+      };
+      DEMO_RESTAURANT.tables.push(newDemoTable);
+      return NextResponse.json(newDemoTable, { status: 201 });
     }
 
     if (!isSuperAdmin && session?.id !== restaurantId && session?.role !== "admin") {
@@ -83,18 +96,28 @@ export async function DELETE(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
+    const { searchParams } = new URL(request.url);
+    const tableId = searchParams.get("tableId");
+
+    if (!tableId) {
+      return NextResponse.json({ error: "Missing tableId" }, { status: 400 });
+    }
+
+    const isDemoTable = String(tableId).startsWith("tbl-");
+
+    if (!session && !isSuperAdmin && !isDemoTable) {
       return NextResponse.json({ error: "Unauthorized: Please log in as owner to delete tables." }, { status: 401 });
     }
     if (session?.role === "staff") {
       return NextResponse.json({ error: "Unauthorized: Staff cannot delete tables. Owner access required." }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const tableId = searchParams.get("tableId");
-
-    if (!tableId) {
-      return NextResponse.json({ error: "Missing tableId" }, { status: 400 });
+    if (isDemoTable) {
+      const idx = DEMO_RESTAURANT.tables.findIndex((t) => t.id === tableId);
+      if (idx !== -1) {
+        DEMO_RESTAURANT.tables.splice(idx, 1);
+        return NextResponse.json({ success: true });
+      }
     }
 
     const table = await prisma.table.findUnique({

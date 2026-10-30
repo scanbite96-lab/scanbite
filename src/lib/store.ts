@@ -45,7 +45,7 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
       orderBy: { createdAt: "desc" },
     });
     if (orders && orders.length > 0) {
-      return orders.map((o) => ({
+      const formatted = orders.map((o) => ({
         ...o,
         status: o.status as OrderStatus,
         rating: o.rating ?? undefined,
@@ -63,6 +63,17 @@ export const getOrdersForRestaurant = async (restaurantId: string): Promise<Orde
         createdAt: o.createdAt.toISOString(),
         updatedAt: o.updatedAt.toISOString(),
       }));
+
+      // If restaurantId is rest-001 or grand-spice and all orders in DB are served/completed,
+      // also include active demo orders so the live KDS console is never completely blank!
+      if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+        const hasActive = formatted.some((o) => ["pending", "cooking", "ready"].includes(o.status));
+        if (!hasActive) {
+          const activeDemos = getDemoOrders().filter((o) => ["pending", "cooking", "ready"].includes(o.status));
+          return [...activeDemos, ...formatted];
+        }
+      }
+      return formatted;
     }
   } catch (err) {
     console.error("Prisma getOrders error:", err);
@@ -269,6 +280,10 @@ export const updateOrderStatus = async (
   status?: Order["status"],
   paymentStatus?: Order["paymentStatus"]
 ): Promise<Order | null> => {
+  if (orderId.startsWith("ord-")) {
+    const demoUpdated = updateDemoOrderStatus(orderId, status, paymentStatus);
+    if (demoUpdated) return demoUpdated;
+  }
   try {
     const updateData: Record<string, string> = {};
     if (status) updateData.status = status;
@@ -430,20 +445,29 @@ export const toggleItemAvailability = async (slug: string, itemId: string): Prom
     const item = await prisma.menuItem.findUnique({
       where: { id: itemId },
     });
-    if (!item) return null;
-    const nextAvailable = !item.isAvailable;
-    const updated = await prisma.menuItem.update({
-      where: { id: itemId },
-      data: { 
-        isAvailable: nextAvailable,
-        ...(nextAvailable && item.stockCount === 0 ? { stockCount: -1 } : {}),
-      },
-    });
-    return updated as unknown as MenuItem;
+    if (item) {
+      const nextAvailable = !item.isAvailable;
+      const updated = await prisma.menuItem.update({
+        where: { id: itemId },
+        data: { 
+          isAvailable: nextAvailable,
+          ...(nextAvailable && item.stockCount === 0 ? { stockCount: -1 } : {}),
+        },
+      });
+      return updated as unknown as MenuItem;
+    }
   } catch (err) {
     console.error("Prisma toggleItemAvailability error:", err);
-    return null;
   }
+
+  // Fallback for demo restaurant in memory
+  const demoItem = DEMO_RESTAURANT.menuItems.find((m) => m.id === itemId);
+  if (demoItem) {
+    demoItem.isAvailable = !demoItem.isAvailable;
+    if (demoItem.isAvailable && demoItem.stockCount === 0) demoItem.stockCount = -1;
+    return demoItem;
+  }
+  return null;
 };
 
 export const getSuperAdminOverview = async () => {

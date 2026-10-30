@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
 import { DEMO_STAFF } from "@/lib/demoData";
+import { Staff } from "@/types";
 
 // GET /api/staff?restaurantId=...
 export async function GET(request: NextRequest) {
@@ -10,15 +11,23 @@ export async function GET(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
-      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
     restaurantId = searchParams.get("restaurantId");
 
     if (!restaurantId) {
       return NextResponse.json({ error: "Missing restaurantId" }, { status: 400 });
+    }
+
+    // Allow demo restaurant without auth
+    if (!session && !isSuperAdmin && (restaurantId === "rest-001" || restaurantId === "grand-spice")) {
+      return NextResponse.json({
+        staff: DEMO_STAFF,
+        defaultStaffPin: "1234",
+      });
+    }
+
+    if (!session && !isSuperAdmin) {
+      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
     }
 
     // Security check: only own restaurant or superadmin
@@ -80,15 +89,6 @@ export async function POST(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
-      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
-    }
-
-    // Only owner or admin can add staff
-    if (session?.role === "staff") {
-      return NextResponse.json({ error: "Forbidden: Only owners can manage staff members." }, { status: 403 });
-    }
-
     const body = await request.json();
     const {
       restaurantId,
@@ -112,6 +112,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "PIN must be exactly 4 digits (e.g. 1234)." }, { status: 400 });
     }
 
+    // Smart default permissions based on role if not explicitly provided
+    let ordersPerm = canManageOrders !== undefined ? Boolean(canManageOrders) : true;
+    let menuPerm = canManageMenu !== undefined ? Boolean(canManageMenu) : false;
+    let billingPerm = canManageBilling !== undefined ? Boolean(canManageBilling) : false;
+    let requestsPerm = canManageRequests !== undefined ? Boolean(canManageRequests) : true;
+
+    if (role === "chef") {
+      if (canManageMenu === undefined) menuPerm = true;
+      if (canManageBilling === undefined) billingPerm = false;
+      if (canManageRequests === undefined) requestsPerm = false;
+    } else if (role === "cashier") {
+      if (canManageBilling === undefined) billingPerm = true;
+      if (canManageMenu === undefined) menuPerm = false;
+    } else if (role === "manager") {
+      ordersPerm = true;
+      menuPerm = true;
+      billingPerm = true;
+      requestsPerm = true;
+    }
+
+    // Allow adding staff in demo mode
+    if (!session && !isSuperAdmin && (restaurantId === "rest-001" || restaurantId === "grand-spice")) {
+      const demoStaffMember: Staff = {
+        id: `st-${Date.now()}`,
+        restaurantId: "rest-001",
+        name: String(name).trim(),
+        role: role as any,
+        pin: cleanPin,
+        phone: phone ? String(phone).trim() : undefined,
+        isActive: Boolean(isActive),
+        canManageOrders: ordersPerm,
+        canManageMenu: menuPerm,
+        canManageBilling: billingPerm,
+        canManageRequests: requestsPerm,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      DEMO_STAFF.unshift(demoStaffMember);
+      return NextResponse.json(demoStaffMember, { status: 201 });
+    }
+
+    if (!session && !isSuperAdmin) {
+      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
+    }
+
+    // Only owner or admin can add staff
+    if (session?.role === "staff") {
+      return NextResponse.json({ error: "Forbidden: Only owners can manage staff members." }, { status: 403 });
+    }
+
     // Security check
     if (!isSuperAdmin && session?.id !== restaurantId && session?.role !== "admin") {
       const rest = await prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { slug: true } });
@@ -131,11 +181,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Smart default permissions based on role if not explicitly provided
-    let ordersPerm = canManageOrders !== undefined ? Boolean(canManageOrders) : true;
-    let menuPerm = canManageMenu !== undefined ? Boolean(canManageMenu) : false;
-    let billingPerm = canManageBilling !== undefined ? Boolean(canManageBilling) : false;
-    let requestsPerm = canManageRequests !== undefined ? Boolean(canManageRequests) : true;
+    // Re-assign smart default permissions if needed
+    ordersPerm = canManageOrders !== undefined ? Boolean(canManageOrders) : true;
+    menuPerm = canManageMenu !== undefined ? Boolean(canManageMenu) : false;
+    billingPerm = canManageBilling !== undefined ? Boolean(canManageBilling) : false;
+    requestsPerm = canManageRequests !== undefined ? Boolean(canManageRequests) : true;
 
     if (role === "chef") {
       if (canManageMenu === undefined) menuPerm = true;
@@ -179,14 +229,6 @@ export async function PATCH(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
-      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
-    }
-
-    if (session?.role === "staff") {
-      return NextResponse.json({ error: "Forbidden: Only owners can update staff." }, { status: 403 });
-    }
-
     const body = await request.json();
     const {
       staffId,
@@ -203,6 +245,33 @@ export async function PATCH(request: NextRequest) {
 
     if (!staffId) {
       return NextResponse.json({ error: "Missing staffId" }, { status: 400 });
+    }
+
+    const isDemoStaff = String(staffId).startsWith("st-");
+
+    if (!session && !isSuperAdmin && !isDemoStaff) {
+      return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
+    }
+
+    if (session?.role === "staff") {
+      return NextResponse.json({ error: "Forbidden: Only owners can update staff." }, { status: 403 });
+    }
+
+    if (isDemoStaff) {
+      const demoItem = DEMO_STAFF.find((s) => s.id === staffId);
+      if (demoItem) {
+        if (name !== undefined) demoItem.name = String(name).trim();
+        if (role !== undefined) demoItem.role = String(role).toLowerCase() as any;
+        if (pin !== undefined) demoItem.pin = String(pin).trim();
+        if (phone !== undefined) demoItem.phone = phone ? String(phone).trim() : undefined;
+        if (isActive !== undefined) demoItem.isActive = Boolean(isActive);
+        if (canManageOrders !== undefined) demoItem.canManageOrders = Boolean(canManageOrders);
+        if (canManageMenu !== undefined) demoItem.canManageMenu = Boolean(canManageMenu);
+        if (canManageBilling !== undefined) demoItem.canManageBilling = Boolean(canManageBilling);
+        if (canManageRequests !== undefined) demoItem.canManageRequests = Boolean(canManageRequests);
+        demoItem.updatedAt = new Date().toISOString();
+        return NextResponse.json(demoItem);
+      }
     }
 
     const staff = await prisma.staff.findUnique({
@@ -273,7 +342,16 @@ export async function DELETE(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (!session && !isSuperAdmin) {
+    const { searchParams } = new URL(request.url);
+    const staffId = searchParams.get("staffId");
+
+    if (!staffId) {
+      return NextResponse.json({ error: "Missing staffId" }, { status: 400 });
+    }
+
+    const isDemoStaff = String(staffId).startsWith("st-");
+
+    if (!session && !isSuperAdmin && !isDemoStaff) {
       return NextResponse.json({ error: "Unauthorized: Please log in." }, { status: 401 });
     }
 
@@ -281,11 +359,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden: Only owners can delete staff." }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const staffId = searchParams.get("staffId");
-
-    if (!staffId) {
-      return NextResponse.json({ error: "Missing staffId" }, { status: 400 });
+    if (isDemoStaff) {
+      const idx = DEMO_STAFF.findIndex((s) => s.id === staffId);
+      if (idx !== -1) {
+        DEMO_STAFF.splice(idx, 1);
+        return NextResponse.json({ success: true, message: "Staff member removed successfully." });
+      }
     }
 
     const staff = await prisma.staff.findUnique({

@@ -152,6 +152,12 @@ export default function RestaurantDashboard() {
   const [isSubmittingStaff, setIsSubmittingStaff] = useState(false);
   const [staffMsg, setStaffMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [staffToast, setStaffToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const showToast = (text: string, type: "success" | "error" = "success") => {
+    setStaffToast({ type, text });
+    setTimeout(() => {
+      setStaffToast((curr) => (curr?.text === text ? null : curr));
+    }, 3500);
+  };
   const [revealedPins, setRevealedPins] = useState<Record<string, boolean>>({});
 
   // Edit Staff Modal State
@@ -206,12 +212,21 @@ export default function RestaurantDashboard() {
 
         if (queryDemo) {
           setIsDemoMode(true);
+          try {
+            await fetch("/api/auth", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "demo_login" }),
+            });
+          } catch {
+            // ignore
+          }
           const demoUser: AuthUser = {
             id: "rest-001",
             name: "The Grand Spice Kitchen",
             slug: "grand-spice",
-            ownerEmail: "demo@scanbite.com",
-            ownerName: "Demo Partner",
+            ownerEmail: "owner@grandspice.com",
+            ownerName: "Rajesh Sharma",
             role: "owner",
             staffPin: "1234",
             permissions: {
@@ -224,6 +239,8 @@ export default function RestaurantDashboard() {
           setAuthUser(demoUser);
           setRestaurantSlug("grand-spice");
           setStaffRestaurantSlug("grand-spice");
+          setNewOwnerEmail("owner@grandspice.com");
+          setNewOwnerName("Rajesh Sharma");
           setActiveTab("kds");
           setIsAuthLoading(false);
           return;
@@ -513,6 +530,8 @@ export default function RestaurantDashboard() {
           setSettingsUpi(restData.upiId || "");
           setSettingsPhone(restData.phone || "");
           setSettingsAddress(restData.address || "");
+          if (restData.ownerName) setNewOwnerName(restData.ownerName);
+          if (restData.ownerEmail) setNewOwnerEmail(restData.ownerEmail);
         }
 
         // Fetch Orders
@@ -604,79 +623,113 @@ export default function RestaurantDashboard() {
     generateQRs();
   }, [restaurant]);
 
+  // Reset Demo Orders Handler
+  const handleResetDemoOrders = async () => {
+    showToast("Reloading 4 active demo orders...", "success");
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset_demo_orders" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.orders) {
+          setOrders(data.orders);
+          setKdsFilter("active");
+          showToast("4 Active Demo Orders Loaded into Kitchen Console! 👨‍🍳", "success");
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Reset demo orders error:", err);
+    }
+    loadDashboardData();
+  };
+
   // Order status transitions
   const handleUpdateOrderStatus = async (orderId: string, nextStatus: Order["status"]) => {
     if (!canManageOrders) {
-      alert("Unauthorized: You do not have permission to advance kitchen orders.");
+      showToast("Unauthorized: You do not have permission to advance kitchen orders.", "error");
       return;
     }
+    // Optimistic UI update
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o)));
+    const statusLabels: Record<string, string> = {
+      pending: "Placed & Pending",
+      cooking: "Cooking in Kitchen 👨‍🍳",
+      ready: "Ready to Serve 🔔",
+      served: "Served to Table ✅",
+      completed: "Completed & Closed 🏁",
+      cancelled: "Cancelled",
+    };
+    showToast(`Order updated: ${statusLabels[nextStatus] || nextStatus}`, "success");
     try {
       const res = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, status: nextStatus }),
       });
-      if (res.ok) {
+      if (!res.ok) {
         loadDashboardData();
-      } else {
-        alert("Failed to update status");
       }
     } catch {
-      alert("Failed to update status");
+      loadDashboardData();
     }
   };
 
   // 1-Click Payment Status toggle
   const handleUpdatePaymentStatus = async (orderId: string, paymentStatus: "paid" | "unpaid") => {
     if (!canManageBilling) {
-      alert("Unauthorized: Only Owner or staff with Billing permissions can mark orders as Paid/Unpaid.");
+      showToast("Unauthorized: Only Owner or staff with Billing permissions can mark orders as Paid/Unpaid.", "error");
       return;
     }
+    // Optimistic UI update
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, paymentStatus } : o))
+    );
+    showToast(`Order marked as ${paymentStatus === "paid" ? "Paid (Settled) 💵" : "Unpaid"}`, "success");
     try {
       const res = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, paymentStatus }),
       });
-      if (res.ok) {
-        setOrders((prev) =>
-          prev.map((o) => (o.id === orderId ? { ...o, paymentStatus } : o))
-        );
-      } else {
-        alert("Failed to update payment status");
+      if (!res.ok) {
+        loadDashboardData();
       }
     } catch {
-      alert("Error updating payment status");
+      loadDashboardData();
     }
   };
 
   // Cancel order handler
   const handleCancelOrder = async (orderId: string, tableNumber: string) => {
     if (!canManageOrders) {
-      alert("Unauthorized: You do not have permission to cancel orders.");
+      showToast("Unauthorized: You do not have permission to cancel orders.", "error");
       return;
     }
     if (!confirm(`Are you sure you want to cancel order for ${tableNumber}? This will mark it cancelled.`)) return;
+    setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: "cancelled" } : o)));
+    showToast(`Order for ${tableNumber} has been cancelled.`, "success");
     try {
       const res = await fetch("/api/orders", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, status: "cancelled" }),
       });
-      if (res.ok) {
+      if (!res.ok) {
         loadDashboardData();
-      } else {
-        alert("Failed to cancel order");
       }
     } catch {
-      alert("Error cancelling order");
+      loadDashboardData();
     }
   };
 
   // Delete Dish Handler
   const handleDeleteDish = async (itemId: string, dishName: string) => {
     if (!isOwner) {
-      alert("Unauthorized: Only the restaurant owner can delete menu dishes.");
+      showToast("Unauthorized: Only the restaurant owner can delete menu dishes.", "error");
       return;
     }
     if (!confirm(`Are you sure you want to permanently delete "${dishName}" from the menu?`)) return;
@@ -692,18 +745,19 @@ export default function RestaurantDashboard() {
             menuItems: prev.menuItems.filter((it) => it.id !== itemId),
           };
         });
+        showToast(`"${dishName}" deleted from menu.`, "success");
       } else {
-        alert("Failed to delete dish");
+        showToast("Failed to delete dish.", "error");
       }
     } catch {
-      alert("Error deleting dish");
+      showToast("Error deleting dish.", "error");
     }
   };
 
   // Delete Table Handler
   const handleDeleteTable = async (tableId: string, tableNumber: string) => {
     if (!isOwner) {
-      alert("Unauthorized: Only the restaurant owner can delete tables.");
+      showToast("Unauthorized: Only the restaurant owner can delete tables.", "error");
       return;
     }
     if (!confirm(`Are you sure you want to delete "${tableNumber}" and remove its QR code?`)) return;
@@ -719,19 +773,20 @@ export default function RestaurantDashboard() {
             tables: prev.tables.filter((tbl) => tbl.id !== tableId),
           };
         });
+        showToast(`"${tableNumber}" deleted.`, "success");
         loadDashboardData();
       } else {
-        alert("Failed to delete table");
+        showToast("Failed to delete table.", "error");
       }
     } catch {
-      alert("Error deleting table");
+      showToast("Error deleting table.", "error");
     }
   };
 
   // Attend service request
   const handleAttendRequest = async (requestId: string) => {
     if (!canManageRequests) {
-      alert("Unauthorized: You do not have permission to attend dining table service requests.");
+      showToast("Unauthorized: You do not have permission to attend dining table service requests.", "error");
       return;
     }
     try {
@@ -741,10 +796,13 @@ export default function RestaurantDashboard() {
         body: JSON.stringify({ requestId }),
       });
       if (res.ok) {
+        showToast("Table request attended & resolved. ✓", "success");
         loadDashboardData();
+      } else {
+        showToast("Failed to clear request.", "error");
       }
     } catch {
-      alert("Failed to clear request");
+      showToast("Failed to clear request.", "error");
     }
   };
 
@@ -752,7 +810,7 @@ export default function RestaurantDashboard() {
   const handleToggleAvailability = async (itemId: string) => {
     if (!restaurant) return;
     if (!canManageMenu) {
-      alert("Unauthorized: You do not have permission to toggle dish availability.");
+      showToast("Unauthorized: You do not have permission to toggle dish availability.", "error");
       return;
     }
     try {
@@ -772,9 +830,12 @@ export default function RestaurantDashboard() {
             ),
           };
         });
+        showToast(`Dish is now ${updatedItem.isAvailable ? "Available In-Stock" : "Marked Sold Out"}`, "success");
+      } else {
+        showToast("Failed to toggle availability.", "error");
       }
     } catch {
-      alert("Failed to toggle availability");
+      showToast("Failed to toggle availability.", "error");
     }
   };
 
@@ -782,7 +843,7 @@ export default function RestaurantDashboard() {
   const handleAddTableSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwner) {
-      alert("Unauthorized: Only the restaurant owner can add new tables.");
+      showToast("Unauthorized: Only the restaurant owner can add new tables.", "error");
       return;
     }
     if (!restaurant || !newTableNum.trim()) return;
@@ -798,14 +859,15 @@ export default function RestaurantDashboard() {
         }),
       });
       if (res.ok) {
+        showToast(`Table "${newTableNum.trim()}" added successfully!`, "success");
         setNewTableNum("");
         setIsAddTableOpen(false);
         loadDashboardData();
       } else {
-        alert("Failed to add table");
+        showToast("Failed to add table.", "error");
       }
     } catch {
-      alert("Error adding table");
+      showToast("Error adding table.", "error");
     } finally {
       setIsSubmittingTable(false);
     }
@@ -920,16 +982,12 @@ export default function RestaurantDashboard() {
         setStaffList((prev) =>
           prev.map((s) => (s.id === staffId ? { ...s, isActive: !currentStatus } : s))
         );
-        setStaffToast({
-          type: "success",
-          text: `"${name}" is now ${!currentStatus ? "Online Active" : "Disabled Offline"}.`,
-        });
-        setTimeout(() => setStaffToast(null), 3500);
+        showToast(`"${name}" is now ${!currentStatus ? "Online Active" : "Disabled Offline"}.`, "success");
       } else {
-        alert("Failed to toggle staff active status");
+        showToast("Failed to toggle staff active status.", "error");
       }
     } catch {
-      alert("Error toggling staff status");
+      showToast("Error toggling staff status.", "error");
     }
   };
 
@@ -951,16 +1009,12 @@ export default function RestaurantDashboard() {
         setStaffList((prev) =>
           prev.map((s) => (s.id === staffId ? { ...s, [permKey]: !currentVal } : s))
         );
-        setStaffToast({
-          type: "success",
-          text: `Permission updated successfully.`,
-        });
-        setTimeout(() => setStaffToast(null), 3000);
+        showToast("Permission updated successfully.", "success");
       } else {
-        alert("Failed to update staff permission");
+        showToast("Failed to update staff permission.", "error");
       }
     } catch {
-      alert("Error updating permission");
+      showToast("Error updating permission.", "error");
     }
   };
 
@@ -972,13 +1026,12 @@ export default function RestaurantDashboard() {
       });
       if (res.ok) {
         setStaffList((prev) => prev.filter((s) => s.id !== staffId));
-        setStaffToast({ type: "success", text: `Staff member "${staffName}" removed successfully.` });
-        setTimeout(() => setStaffToast(null), 4000);
+        showToast(`Staff member "${staffName}" removed successfully.`, "success");
       } else {
-        alert("Failed to delete staff member");
+        showToast("Failed to delete staff member.", "error");
       }
     } catch {
-      alert("Error deleting staff member");
+      showToast("Error deleting staff member.", "error");
     }
   };
 
@@ -1080,12 +1133,13 @@ export default function RestaurantDashboard() {
             menuItems: prev.menuItems.map((it) => (it.id === editingStockDish.id ? { ...it, ...updatedItem } : it)),
           };
         });
+        showToast(`Stock updated for "${editingStockDish.name}"`, "success");
         setEditingStockDish(null);
       } else {
-        alert("Failed to save stock portions");
+        showToast("Failed to save stock portions.", "error");
       }
     } catch {
-      alert("Error saving stock portions");
+      showToast("Error saving stock portions.", "error");
     } finally {
       setIsSavingStock(false);
     }
@@ -1095,7 +1149,7 @@ export default function RestaurantDashboard() {
   const handleAddDishSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwner) {
-      alert("Unauthorized: Only the restaurant owner can add new dishes.");
+      showToast("Unauthorized: Only the restaurant owner can add new dishes.", "error");
       return;
     }
     if (!restaurant || !newDishName.trim() || !newDishPrice) return;
@@ -1118,6 +1172,7 @@ export default function RestaurantDashboard() {
         }),
       });
       if (res.ok) {
+        showToast(`Dish "${newDishName.trim()}" added to menu! ✓`, "success");
         setNewDishName("");
         setNewDishPrice("");
         setNewDishDesc("");
@@ -1125,10 +1180,10 @@ export default function RestaurantDashboard() {
         setIsAddDishOpen(false);
         loadDashboardData();
       } else {
-        alert("Failed to add dish");
+        showToast("Failed to add dish.", "error");
       }
     } catch {
-      alert("Error adding dish");
+      showToast("Error adding dish.", "error");
     } finally {
       setIsSubmittingDish(false);
     }
@@ -1137,7 +1192,7 @@ export default function RestaurantDashboard() {
   // Save Settings Handler
   const handleSaveSettings = async () => {
     if (!isOwner) {
-      alert("Unauthorized: Only the restaurant owner can modify restaurant settings.");
+      showToast("Unauthorized: Only the restaurant owner can modify restaurant settings.", "error");
       return;
     }
     if (!restaurant) return;
@@ -1157,14 +1212,15 @@ export default function RestaurantDashboard() {
         }),
       });
       if (res.ok) {
+        showToast("Settings saved successfully to database! ✓", "success");
         setSettingsSaveMsg("Settings saved successfully to database! ✓");
         setTimeout(() => setSettingsSaveMsg(null), 3500);
         loadDashboardData();
       } else {
-        alert("Failed to save settings");
+        showToast("Failed to save settings.", "error");
       }
     } catch {
-      alert("Error saving settings");
+      showToast("Error saving settings.", "error");
     } finally {
       setIsSavingSettings(false);
     }
@@ -1293,14 +1349,21 @@ export default function RestaurantDashboard() {
               </p>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setIsDemoMode(true);
+                  try {
+                    await fetch("/api/auth", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "demo_login" }),
+                    });
+                  } catch {}
                   const demoUser: AuthUser = {
                     id: "rest-001",
                     name: "The Grand Spice Kitchen",
                     slug: "grand-spice",
-                    ownerEmail: "demo@scanbite.com",
-                    ownerName: "Demo Partner",
+                    ownerEmail: "owner@grandspice.com",
+                    ownerName: "Rajesh Sharma",
                     role: "owner",
                     staffPin: "1234",
                     permissions: {
@@ -1313,6 +1376,8 @@ export default function RestaurantDashboard() {
                   setAuthUser(demoUser);
                   setRestaurantSlug("grand-spice");
                   setStaffRestaurantSlug("grand-spice");
+                  setNewOwnerEmail("owner@grandspice.com");
+                  setNewOwnerName("Rajesh Sharma");
                   setActiveTab("kds");
                 }}
                 className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-orange-500/25 transition active:scale-95"
@@ -1971,22 +2036,35 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
 
-              {/* KDS Search Input */}
-              <div className="relative min-w-[220px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search table, order #, dish..."
-                  value={kdsSearch}
-                  onChange={(e) => setKdsSearch(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
-                />
-                {kdsSearch && (
+              {/* KDS Search Input & Reset Demo Orders */}
+              <div className="flex items-center gap-2">
+                <div className="relative min-w-[200px]">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search table, order #, dish..."
+                    value={kdsSearch}
+                    onChange={(e) => setKdsSearch(e.target.value)}
+                    className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500"
+                  />
+                  {kdsSearch && (
+                    <button
+                      onClick={() => setKdsSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
                   <button
-                    onClick={() => setKdsSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    onClick={handleResetDemoOrders}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer"
+                    title="Reload 4 active demo orders in kitchen (Pending, Cooking, Ready)"
                   >
-                    <X className="w-3 h-3" />
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Reset Demo Tickets</span>
                   </button>
                 )}
               </div>
@@ -1999,20 +2077,42 @@ export default function RestaurantDashboard() {
 
             {/* Orders Ticket Grid */}
             {filteredOrders.length === 0 ? (
-              <div className="bg-white rounded-3xl p-16 text-center border border-slate-200">
-                <ChefHat className="w-16 h-16 text-slate-300 mx-auto mb-3" />
+              <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm max-w-xl mx-auto">
+                <ChefHat className="w-14 h-14 text-orange-400 mx-auto mb-3" />
                 <h3 className="font-bold text-slate-800 text-lg">No Orders in this view</h3>
-                <p className="text-slate-500 text-xs mt-1">
-                  When a customer scans a table QR code and submits an order, it appears here instantly!
+                <p className="text-slate-500 text-xs mt-1 leading-relaxed">
+                  {orders.length > 0
+                    ? `You currently have ${orders.length} total orders recorded, but none matching the "${kdsFilter}" view filter.`
+                    : "When a customer scans a table QR code and submits an order, it appears here in real-time!"}
                 </p>
-                <a
-                  href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold hover:bg-orange-700 transition"
-                >
-                  Place a Test Order as Diner <ChevronRight className="w-4 h-4" />
-                </a>
+                <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+                  {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
+                    <button
+                      onClick={handleResetDemoOrders}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition active:scale-95 cursor-pointer"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Reload 4 Active Demo Orders</span>
+                    </button>
+                  )}
+                  {kdsFilter !== "all" && orders.length > 0 && (
+                    <button
+                      onClick={() => setKdsFilter("all")}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      <span>View All ({orders.length}) Orders</span>
+                    </button>
+                  )}
+                  <a
+                    href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition"
+                  >
+                    <span>📱 Place a Test Order as Diner</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -4159,6 +4259,35 @@ export default function RestaurantDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Global Dashboard Toast Feedback */}
+      {staffToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div
+            className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-2xl border ${
+              staffToast.type === "success"
+                ? "bg-slate-900 text-emerald-400 border-emerald-500/50"
+                : "bg-slate-900 text-rose-400 border-rose-500/50"
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {staffToast.type === "success" ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+              )}
+              <span className="text-white text-xs">{staffToast.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStaffToast(null)}
+              className="ml-3 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

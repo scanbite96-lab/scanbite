@@ -122,6 +122,43 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action } = body;
 
+    // 0. INSTANT DEMO LOGIN
+    if (action === "demo_login") {
+      const demoUser: AuthUser = {
+        id: "rest-001",
+        name: "The Grand Spice Kitchen",
+        slug: "grand-spice",
+        ownerEmail: "owner@grandspice.com",
+        ownerName: "Rajesh Sharma",
+        role: "owner",
+        staffPin: "1234",
+        permissions: {
+          canManageOrders: true,
+          canManageMenu: true,
+          canManageBilling: true,
+          canManageRequests: true,
+        },
+      };
+
+      const token = signToken(demoUser);
+      const response = NextResponse.json({
+        success: true,
+        message: "Welcome to ScanBite Interactive Demo!",
+        user: demoUser,
+      });
+
+      response.cookies.set({
+        name: AUTH_COOKIE_NAME,
+        value: token,
+        httpOnly: true,
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+        sameSite: "lax",
+      });
+
+      return response;
+    }
+
     // 1. OWNER PASSWORD LOGIN
     if (action === "login") {
       const { identifier, password } = body;
@@ -365,10 +402,29 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "No fields to update." }, { status: 400 });
       }
 
-      const updated = await prisma.restaurant.update({
-        where: { slug: session.slug },
-        data: updateData,
-      });
+      let updated: any = null;
+      try {
+        updated = await prisma.restaurant.update({
+          where: { slug: session.slug },
+          data: updateData,
+        });
+      } catch (err) {
+        console.warn("Prisma update credentials fallback for demo:", err);
+      }
+
+      if (!updated && session.slug === "grand-spice") {
+        updated = {
+          id: "rest-001",
+          name: "The Grand Spice Kitchen",
+          slug: "grand-spice",
+          ownerEmail: updateData.ownerEmail || session.ownerEmail || "owner@grandspice.com",
+          ownerName: updateData.ownerName || session.ownerName || "Rajesh Sharma",
+        };
+      }
+
+      if (!updated) {
+        return NextResponse.json({ error: "Failed to update restaurant credentials in database." }, { status: 500 });
+      }
 
       // Update session cookie if email/name changed
       const updatedUser: AuthUser = {
