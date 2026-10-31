@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus, vacateTable } from "@/lib/store";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
+import { getSessionUser, isSuperAdminRequest, checkRateLimit, getClientIp } from "@/lib/auth";
 import { DEMO_RESTAURANT, resetDemoOrders } from "@/lib/demoData";
 
 export async function GET(request: NextRequest) {
@@ -32,6 +32,11 @@ export async function POST(request: NextRequest) {
       if (!restaurantId || !tableId) {
         return NextResponse.json({ error: "Missing restaurantId or tableId" }, { status: 400 });
       }
+      const clientIp = getClientIp(request);
+      const vacateLimit = checkRateLimit(`vacate:${restaurantId}:${tableId}:${clientIp}`, 3, 60);
+      if (!vacateLimit.allowed) {
+        return NextResponse.json({ error: "Please wait before requesting table vacate again." }, { status: 429 });
+      }
       await vacateTable(restaurantId, tableId);
       return NextResponse.json({ success: true, message: `Table ${tableId} vacated and reset successfully` });
     }
@@ -61,6 +66,16 @@ export async function POST(request: NextRequest) {
 
     if (!restaurantId || !tableId || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid order data: items, restaurantId and tableId are required" }, { status: 400 });
+    }
+
+    const clientIp = getClientIp(request);
+    // Anti-spam order rate limiting: Max 4 orders per 30 seconds per table + IP
+    const orderLimit = checkRateLimit(`order:${restaurantId}:${tableId}:${clientIp}`, 4, 30);
+    if (!orderLimit.allowed) {
+      return NextResponse.json(
+        { error: `Order frequency limit reached. Please wait ${orderLimit.retryAfterSeconds} seconds before placing another order.` },
+        { status: 429, headers: { "Retry-After": String(orderLimit.retryAfterSeconds) } }
+      );
     }
 
     // Verify restaurant is active & get configured tax rate
@@ -262,6 +277,34 @@ export async function PATCH(request: NextRequest) {
           { error: "Forbidden: You do not have permission to manage billing or payment status." },
           { status: 403 }
         );
+      }
+    }
+
+    // Multi-tenant IDOR isolation check: verify order belongs to caller's restaurant
+    if (!isSuperAdmin && session && !isDemoOrder) {
+      let existingOrder = null;
+      try {
+        existingOrder = await prisma.order.findUnique({
+          where: { id: orderId },
+          select: { restaurantId: true, restaurant: { select: { id: true, slug: true } } },
+        });
+      } catch {
+        // ignore
+      }
+
+      if (existingOrder) {
+        const isAuthorized = 
+          session.id === existingOrder.restaurantId || 
+          session.id === existingOrder.restaurant?.id ||
+          session.slug === existingOrder.restaurant?.slug ||
+          session.role === "admin";
+
+        if (!isAuthorized) {
+          return NextResponse.json(
+            { error: "Forbidden: You cannot modify another restaurant's orders." },
+            { status: 403 }
+          );
+        }
       }
     }
 

@@ -4,7 +4,6 @@ import { AuthUser } from "@/types";
 
 export const AUTH_COOKIE_NAME = "scanbite_auth_token";
 const SECRET_KEY = process.env.AUTH_SECRET || "scanbite-super-secret-salt-2026";
-const ADMIN_MASTER_KEYS = [process.env.ADMIN_SECRET, "admin2026", "superadmin", "founder2026"].filter(Boolean) as string[];
 
 export function signToken(payload: AuthUser): string {
   const now = Math.floor(Date.now() / 1000);
@@ -61,8 +60,14 @@ export function isSuperAdminRequest(request: NextRequest): boolean {
 
     if (adminKey) {
       const cleanKey = adminKey.trim().toLowerCase();
-      const validKeys = ["admin2026", "superadmin", "founder2026"];
-      if (process.env.ADMIN_SECRET) validKeys.push(process.env.ADMIN_SECRET.trim().toLowerCase());
+      const validKeys: string[] = [];
+      if (process.env.ADMIN_SECRET) {
+        validKeys.push(process.env.ADMIN_SECRET.trim().toLowerCase());
+      }
+      // Fallback dev keys only allowed outside production
+      if (process.env.NODE_ENV !== "production") {
+        validKeys.push("admin2026", "superadmin", "founder2026");
+      }
       if (validKeys.includes(cleanKey)) {
         return true;
       }
@@ -77,4 +82,102 @@ export function isSuperAdminRequest(request: NextRequest): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Hashes a password or PIN using scrypt with a unique cryptographically random salt.
+ * Returns format: `scrypt:${salt}:${hash}`
+ */
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derivedKey = crypto.scryptSync(password, salt, 64);
+  return `scrypt:${salt}:${derivedKey.toString("hex")}`;
+}
+
+/**
+ * Verifies a password or PIN against a stored hash or legacy plaintext string.
+ * Supports timing-safe comparison to prevent timing attacks.
+ */
+export function verifyPassword(password: string, storedHashOrPlain?: string | null): boolean {
+  if (!password || !storedHashOrPlain) return false;
+
+  if (storedHashOrPlain.startsWith("scrypt:")) {
+    const parts = storedHashOrPlain.split(":");
+    if (parts.length !== 3) return false;
+    const [, salt, expectedHashHex] = parts;
+    const derivedKey = crypto.scryptSync(password, salt, 64);
+    const expectedBuf = Buffer.from(expectedHashHex, "hex");
+    if (derivedKey.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(derivedKey, expectedBuf);
+  }
+
+  // Backward compatibility for existing plaintext passwords (e.g. "admin123", "1234")
+  const inputBuf = Buffer.from(password, "utf8");
+  const storedBuf = Buffer.from(storedHashOrPlain, "utf8");
+  if (inputBuf.length !== storedBuf.length) return false;
+  return crypto.timingSafeEqual(inputBuf, storedBuf);
+}
+
+/**
+ * Checks if a string is already hashed with our scrypt format
+ */
+export function isHashed(value?: string | null): boolean {
+  return typeof value === "string" && value.startsWith("scrypt:");
+}
+
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+/**
+ * In-memory sliding window rate limiter.
+ * @param key Unique identifier (e.g. `ip:action:identifier`)
+ * @param maxRequests Maximum allowed requests within the window
+ * @param windowSeconds Window duration in seconds
+ */
+export function checkRateLimit(
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): { allowed: boolean; remaining: number; retryAfterSeconds: number } {
+  const now = Date.now();
+  const windowMs = windowSeconds * 1000;
+
+  // Periodic cleanup if map grows too large to prevent serverless memory leaks
+  if (rateLimitMap.size > 2000) {
+    rateLimitMap.forEach((v, k) => {
+      if (v.resetAt < now) {
+        rateLimitMap.delete(k);
+      }
+    });
+  }
+
+  const existing = rateLimitMap.get(key);
+
+  if (!existing || existing.resetAt < now) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, remaining: maxRequests - 1, retryAfterSeconds: 0 };
+  }
+
+  if (existing.count >= maxRequests) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
+    return { allowed: false, remaining: 0, retryAfterSeconds };
+  }
+
+  existing.count += 1;
+  return { allowed: true, remaining: maxRequests - existing.count, retryAfterSeconds: 0 };
+}
+
+/**
+ * Extracts the real client IP from incoming NextRequest headers
+ */
+export function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0].trim();
+  }
+  return request.headers.get("x-real-ip") || "127.0.0.1";
 }

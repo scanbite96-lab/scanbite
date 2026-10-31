@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getRestaurantBySlug } from "@/lib/store";
-import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
+import { getSessionUser, isSuperAdminRequest, hashPassword, checkRateLimit, getClientIp } from "@/lib/auth";
 import { DEMO_RESTAURANT } from "@/lib/demoData";
 
 export async function GET(request: NextRequest) {
@@ -114,6 +114,16 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const clientIp = getClientIp(request);
+    // Anti-spam rate limiting: Max 5 new restaurant registrations per 15 minutes per IP
+    const rateLimit = checkRateLimit(`register:${clientIp}`, 5, 900);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Too many registration attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      );
+    }
+
     const body = await request.json();
     const { 
       name, 
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest) {
         isActive: true,
         ownerName: ownerName || "Owner",
         ownerEmail: ownerEmail ? String(ownerEmail).trim().toLowerCase() : null,
-        password: password || "admin123",
+        password: hashPassword(password || "admin123"),
         staffPin: staffPin || "1234",
         tagline: tagline || "Authentic Taste, Fast Service",
         phone: phone || "+91 99999 00000",

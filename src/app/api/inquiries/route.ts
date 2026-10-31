@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { isSuperAdminRequest } from "@/lib/auth";
+import { isSuperAdminRequest, checkRateLimit, getClientIp } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const INQUIRIES_FILE = path.join(os.tmpdir(), "scanbite_inquiries.json");
@@ -51,6 +51,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const clientIp = getClientIp(req);
+    // Anti-spam rate limiting: Max 5 inquiries per 10 minutes per IP
+    const inqLimit = checkRateLimit(`inquiry:${clientIp}`, 5, 600);
+    if (!inqLimit.allowed) {
+      return NextResponse.json(
+        { error: `Too many inquiries submitted. Please wait ${inqLimit.retryAfterSeconds} seconds before submitting again.` },
+        { status: 429, headers: { "Retry-After": String(inqLimit.retryAfterSeconds) } }
+      );
+    }
+
     const body = await req.json();
     const { restaurantName, ownerName, phone, city, tablesCount, notes } = body;
 

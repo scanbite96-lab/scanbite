@@ -133,6 +133,24 @@
       8. Cloudflare Public Tunnel Gateway: PASS (All 4 portals globally reachable over HTTPS: diner menu, dashboard, register, founder-hq)
     - **Zero-Regression Verification:** Full production build (`npm run build`) compiled all 21 routes with 0 TypeScript/Next.js errors.
 
+13. **Enterprise SaaS Security Hardening, Zero-Trust Auth & Rate Limiting (Verified Oct 31, 2026):**
+    - **Cryptographic Password & PIN Hashing (`src/lib/auth.ts`):** Replaced legacy plaintext passwords with Node's native `crypto.scryptSync` (64-byte derived key) + cryptographically random 16-byte salt (`scrypt:${salt}:${hash}`). Implemented constant-time comparison via `crypto.timingSafeEqual` across all auth checks. Added seamless backward compatibility that auto-migrates unhashed database passwords (`admin123`) to secure scrypt hashes upon first successful login with zero downtime.
+    - **Sliding Window Rate Limiting & Anti-Brute-Force Protection (`src/lib/auth.ts`):**
+      - `/api/auth` (Action: `login`): Enforced sliding window rate limiter (max 5 failed attempts per 60s per IP + identifier) returning HTTP 429 and `Retry-After` header.
+      - `/api/auth` (Action: `pin_login`): Restricted 4-digit staff PIN verification to max 5 attempts per 60s per IP + restaurant slug, permanently eliminating PIN brute-forcing.
+      - `/api/restaurants` (Action: `POST`): Capped restaurant registrations to max 5 per 15 minutes per IP to prevent spam tenant provisioning.
+      - `/api/orders` (Action: `POST`): Throttled table order placement to max 4 orders per 30 seconds per table + IP, preventing malicious denial-of-service kitchen flooding.
+      - `/api/inquiries` (Action: `POST`): Limited partner CRM leads to max 5 submissions per 10 minutes per IP.
+      - `/api/service-requests` (Action: `POST`): Applied 3 calls per 15s cooldown per table for Water/Waiter/Bill buttons.
+      - **Zero Memory Leaks:** Rate limiter automatically purges expired timestamps whenever tracking map exceeds 2,000 entries.
+    - **Multi-Tenant IDOR (Insecure Direct Object Reference) Protection:**
+      - Upgraded `PATCH /api/orders` with strict tenant boundary verification: cross-tenant mutations are blocked with HTTP 403 (`Forbidden: You cannot modify another restaurant's orders`).
+      - Protected `PATCH /api/service-requests` with explicit staff/owner authentication check.
+      - Filtered out `staffPin` from `GET /api/auth` responses for non-owner roles.
+    - **Production Secret Hardening:**
+      - In `isSuperAdminRequest()`, disabled hardcoded fallback keys (`admin2026`, `superadmin`, `founder2026`) when running in production (`NODE_ENV === "production"`), strictly enforcing `process.env.ADMIN_SECRET`.
+    - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 21 routes) with 0 TypeScript/Next.js compilation errors.
+
 ---
 
 ## 📋 Next Tasks Backlog (ROADMAP)

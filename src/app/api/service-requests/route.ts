@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceRequests, createServiceRequest, attendServiceRequest } from "@/lib/store";
-import { getSessionUser, isSuperAdminRequest } from "@/lib/auth";
+import { getSessionUser, isSuperAdminRequest, checkRateLimit, getClientIp } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -23,6 +23,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const clientIp = getClientIp(request);
+    // Anti-spam cooldown: Max 3 service requests per 15s per table
+    const limit = checkRateLimit(`service:${restaurantId}:${tableId}:${clientIp}`, 3, 15);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Service request already sent. Please wait a moment before calling staff again." },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+      );
+    }
+
     const req = await createServiceRequest(restaurantId, tableId, tableNumber, type);
     return NextResponse.json(req, { status: 201 });
   } catch {
@@ -35,18 +45,23 @@ export async function PATCH(request: NextRequest) {
     const session = getSessionUser(request);
     const isSuperAdmin = isSuperAdminRequest(request);
 
-    if (session?.role === "staff" && !session.permissions?.canManageRequests) {
-      return NextResponse.json(
-        { error: "Forbidden: You do not have permission to attend dining table requests." },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json();
     const { requestId } = body;
 
     if (!requestId) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
+    }
+
+    const isDemo = String(requestId).startsWith("srv-") || String(requestId).startsWith("req-");
+    if (!session && !isSuperAdmin && !isDemo) {
+      return NextResponse.json({ error: "Unauthorized: Staff or Owner access required." }, { status: 401 });
+    }
+
+    if (session?.role === "staff" && !session.permissions?.canManageRequests) {
+      return NextResponse.json(
+        { error: "Forbidden: You do not have permission to attend dining table requests." },
+        { status: 403 }
+      );
     }
 
     const ok = await attendServiceRequest(requestId);

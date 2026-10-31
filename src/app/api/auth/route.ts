@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { AuthUser } from "@/types";
-import { signToken, verifyToken, AUTH_COOKIE_NAME, isSuperAdminRequest } from "@/lib/auth";
+import { 
+  signToken, 
+  verifyToken, 
+  AUTH_COOKIE_NAME, 
+  isSuperAdminRequest,
+  hashPassword,
+  verifyPassword,
+  isHashed,
+  checkRateLimit,
+  getClientIp
+} from "@/lib/auth";
 import { DEMO_STAFF } from "@/lib/demoData";
 
 // GET /api/auth -> Get current logged-in user profile
@@ -77,7 +87,7 @@ export async function GET(request: NextRequest) {
             ownerEmail: "owner@grandspice.com",
             ownerName: session.role === "staff" ? staffName : "Rajesh Sharma",
             role: session.role || "owner",
-            staffPin: "1234",
+            staffPin: session.role === "owner" ? "1234" : undefined,
             staffId: session.staffId,
             staffName: session.role === "staff" ? staffName : undefined,
             staffRole: session.role === "staff" ? staffRole : undefined,
@@ -153,7 +163,7 @@ export async function GET(request: NextRequest) {
         ownerEmail: restaurant.ownerEmail,
         ownerName: session.role === "staff" ? (staffName || restaurant.ownerName) : restaurant.ownerName,
         role: session.role || "owner",
-        staffPin: restaurant.staffPin || "1234",
+        staffPin: session.role === "owner" ? (restaurant.staffPin || "1234") : undefined,
         staffId: session.staffId,
         staffName: session.role === "staff" ? staffName : undefined,
         staffRole: session.role === "staff" ? staffRole : undefined,
@@ -218,7 +228,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const clientIp = getClientIp(request);
       const cleanId = String(identifier).trim().toLowerCase();
+
+      // Rate limit: Max 5 login attempts per 60s per IP + identifier
+      const rateLimitKey = `auth:login:${clientIp}:${cleanId}`;
+      const rateLimit = checkRateLimit(rateLimitKey, 5, 60);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: `Too many login attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
+          { 
+            status: 429,
+            headers: { "Retry-After": String(rateLimit.retryAfterSeconds) }
+          }
+        );
+      }
+
       let restaurant = null;
       try {
         restaurant = await prisma.restaurant.findFirst({
@@ -252,12 +277,26 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      const validPassword = restaurant.password || "admin123";
-      if (password !== validPassword) {
+      const storedPassword = restaurant.password || "admin123";
+      const isValid = verifyPassword(password, storedPassword);
+
+      if (!isValid) {
         return NextResponse.json(
           { error: "Incorrect password. Please try again or use default: admin123" },
           { status: 401 }
         );
+      }
+
+      // Auto-migrate legacy plaintext password to secure scrypt hash in database
+      if (!isHashed(restaurant.password) && restaurant.id !== "rest-001") {
+        try {
+          await prisma.restaurant.update({
+            where: { id: restaurant.id },
+            data: { password: hashPassword(password) },
+          });
+        } catch (upgradeErr) {
+          console.warn("Failed to auto-upgrade restaurant password hash:", upgradeErr);
+        }
       }
 
       const user: AuthUser = {
@@ -304,8 +343,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const clientIp = getClientIp(request);
       const cleanSlug = String(slug).trim().toLowerCase();
       const cleanPin = String(pin).trim();
+
+      // Rate limit: Max 5 PIN attempts per 60s per IP + slug to block brute force
+      const rateLimitKey = `auth:pin:${clientIp}:${cleanSlug}`;
+      const rateLimit = checkRateLimit(rateLimitKey, 5, 60);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: `Too many PIN attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
+          { 
+            status: 429,
+            headers: { "Retry-After": String(rateLimit.retryAfterSeconds) }
+          }
+        );
+      }
 
       let restaurant: any = null;
       try {
@@ -336,19 +389,19 @@ export async function POST(request: NextRequest) {
       // Check if there is an individual staff member registered with this PIN in DB (resilient try/catch)
       let specificStaff: any = null;
       try {
-        specificStaff = await prisma.staff.findFirst({
+        const staffList = await prisma.staff.findMany({
           where: {
             restaurantId: restaurant.id,
-            pin: cleanPin,
           },
         });
+        specificStaff = staffList.find((s) => verifyPassword(cleanPin, s.pin));
       } catch (err) {
         console.warn("Prisma staff lookup error in pin_login:", err);
       }
 
       // If DB returned no match (or DB failed) and this is the demo restaurant, check DEMO_STAFF
       if (!specificStaff && isDemoRestaurant) {
-        const demoStaffMatch = DEMO_STAFF.find((s) => s.pin === cleanPin);
+        const demoStaffMatch = DEMO_STAFF.find((s) => verifyPassword(cleanPin, s.pin));
         if (demoStaffMatch) {
           specificStaff = {
             id: demoStaffMatch.id,
@@ -396,7 +449,7 @@ export async function POST(request: NextRequest) {
       } else {
         // Fallback to default restaurant-wide staffPin
         const expectedPin = restaurant.staffPin || "1234";
-        if (cleanPin !== expectedPin) {
+        if (!verifyPassword(cleanPin, expectedPin)) {
           return NextResponse.json(
             { error: "Incorrect 4-digit PIN. Please verify with the restaurant owner." },
             { status: 401 }
@@ -466,7 +519,7 @@ export async function POST(request: NextRequest) {
       const updateData: Record<string, string> = {};
 
       if (newPassword && newPassword.trim().length >= 4) {
-        updateData.password = newPassword.trim();
+        updateData.password = hashPassword(newPassword.trim());
       }
       if (newStaffPin && newStaffPin.trim().length >= 4) {
         updateData.staffPin = newStaffPin.trim();
