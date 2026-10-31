@@ -2225,8 +2225,8 @@ export default function RestaurantDashboard() {
             {/* Row 2: Navigation Tabs Bar — scrollable with right-fade hint on mobile */}
             <div className="relative py-1.5">
               {/* gradient hint so users know more tabs exist off-screen */}
-              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent z-10 md:hidden" aria-hidden="true" />
-            <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pr-6 md:pr-0">
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent z-10 lg:hidden" aria-hidden="true" />
+            <div className="flex items-center justify-between gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pr-6 lg:pr-0">
               {isOwner ? (
                 <nav className="flex items-center gap-1.5 py-0.5">
                   <button

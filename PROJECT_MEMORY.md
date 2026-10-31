@@ -151,6 +151,24 @@
       - In `isSuperAdminRequest()`, disabled hardcoded fallback keys (`admin2026`, `superadmin`, `founder2026`) when running in production (`NODE_ENV === "production"`), strictly enforcing `process.env.ADMIN_SECRET`.
     - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 21 routes) with 0 TypeScript/Next.js compilation errors.
 
+14. **Owner Dashboard UI Responsive Audit & Collision Elimination (Verified Oct 31, 2026):**
+    - **Tablet Header Collision Resolved (768px – 1024px):**
+      - Clamped restaurant dropdown `<select>` and `<h1>` with responsive `max-w-[120px] sm:max-w-[180px] md:max-w-[240px]` and `truncate`, completely eliminating the 95px overlap collision with `Test Sound` and audio control buttons.
+      - Switched `Test Sound` button label to icon-only on mobile/tablet viewports and visible on `md+`, saving ~50px horizontal width.
+      - Restricted `Diner Menu` link to `lg+` viewports so tablet widths never experience header overcrowding.
+    - **Mobile Viewport LIVE Indicator & Compact Actions (360px – 390px):**
+      - Replaced bulky `LIVE` badge on small mobile screens with a high-visibility pulsing emerald green status dot (`w-2 h-2 rounded-full bg-emerald-400 animate-pulse sm:hidden`), keeping the pill text badge for `sm+`.
+      - Condensed action control spacing (`gap-1 sm:gap-2`) with zero element collision or clipping.
+    - **Menu & Stock Action Bar Wrap:**
+      - Refactored Menu Catalog header to `flex flex-col sm:flex-row items-stretch sm:items-center gap-2`.
+      - The `Search dish...` input expands to full width on mobile devices, and `+ Manage Categories` and `+ Add New Dish` buttons wrap neatly below it with 100% visible text (resolving the truncated `+` button bug).
+    - **Dish Modals Form Input Wrap ("Add Dish" & "Edit Dish"):**
+      - Converted Portion Sizes and Add-ons input rows from rigid single-row flex to responsive wrapping flex (`flex flex-wrap gap-2`).
+      - In both Add Food Dish and Edit Food Dish modals, `+ Add Size` and `+ Add Extra` buttons now render 100% intact with zero horizontal cutoff.
+    - **Smooth Navigation Tabs Bar Right-Fade Hint:**
+      - Added a CSS right-side gradient fade mask (`pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent z-10 lg:hidden`) and `pr-6 lg:pr-0` so users immediately see that more tabs are scrollable.
+    - **Verification:** Verified live on Vercel (`scanbite-plum.vercel.app/dashboard?demo=true`) at 1280px, 768px (iPad portrait), and 390px (mobile) via Chrome DevTools MCP. Production build compiled 21/21 routes with 0 errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
