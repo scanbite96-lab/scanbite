@@ -62,7 +62,11 @@ export function isSuperAdminRequest(request: NextRequest): boolean {
       const cleanKey = adminKey.trim().toLowerCase();
       const validKeys: string[] = [];
       if (process.env.ADMIN_SECRET) {
-        validKeys.push(process.env.ADMIN_SECRET.trim().toLowerCase());
+        // Multi-Admin support: comma-separated list of keys (e.g. key1,key2,key3)
+        const envKeys = process.env.ADMIN_SECRET.split(",")
+          .map((k) => k.trim().toLowerCase())
+          .filter(Boolean);
+        validKeys.push(...envKeys);
       }
       // Fallback dev keys only allowed outside production
       if (process.env.NODE_ENV !== "production") {

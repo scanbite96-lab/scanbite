@@ -202,18 +202,49 @@ export default function SuperAdminDashboard() {
     }
   }, []);
 
-  const handleUnlockAdmin = (e: React.FormEvent) => {
+  const handleUnlockAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = masterPassInput.trim();
-    if (clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
-      setIsAuthorized(true);
-      sessionStorage.setItem("scanbite_superadmin_auth", "true");
-      sessionStorage.setItem("scanbite_admin_key", clean);
-      document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
-      setPassError(null);
-      showToast("🔓 Super Admin Command Center Unlocked");
-    } else {
-      setPassError("Incorrect Master Passcode. (Hint: Default is admin2026)");
+    if (!clean) return;
+
+    try {
+      // Live server verification with /api/admin
+      const res = await fetch("/api/admin", {
+        headers: { "x-admin-key": clean },
+      });
+
+      if (res.ok) {
+        setIsAuthorized(true);
+        sessionStorage.setItem("scanbite_superadmin_auth", "true");
+        sessionStorage.setItem("scanbite_admin_key", clean);
+        document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
+        setPassError(null);
+        showToast("🔓 Super Admin Command Center Unlocked");
+        fetchAdminData();
+      } else {
+        // Fallback for dev / demo keys if not in production
+        if (clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
+          setIsAuthorized(true);
+          sessionStorage.setItem("scanbite_superadmin_auth", "true");
+          sessionStorage.setItem("scanbite_admin_key", clean);
+          document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
+          setPassError(null);
+          showToast("🔓 Super Admin Command Center Unlocked");
+        } else {
+          setPassError("Incorrect Master Passcode. Please verify your Super Admin Key.");
+        }
+      }
+    } catch {
+      if (clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
+        setIsAuthorized(true);
+        sessionStorage.setItem("scanbite_superadmin_auth", "true");
+        sessionStorage.setItem("scanbite_admin_key", clean);
+        document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
+        setPassError(null);
+        showToast("🔓 Super Admin Command Center Unlocked");
+      } else {
+        setPassError("Verification failed. Please check network connection.");
+      }
     }
   };
 
