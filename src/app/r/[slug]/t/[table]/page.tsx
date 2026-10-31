@@ -975,7 +975,7 @@ export default function CustomerTableMenu() {
 
   // Category counts map
   const categoryCounts = useMemo(() => {
-    if (!restaurant) return {};
+    if (!restaurant?.menuItems) return {};
     const counts: Record<string, number> = { all: restaurant.menuItems.length };
     restaurant.menuItems.forEach((it) => {
       counts[it.categoryId] = (counts[it.categoryId] || 0) + 1;
@@ -998,7 +998,7 @@ export default function CustomerTableMenu() {
 
   // Recommended Add-ons (Dishes not in cart, e.g. Desserts & Drinks)
   const recommendedAddons = useMemo(() => {
-    if (!restaurant) return [];
+    if (!restaurant?.menuItems) return [];
     const inCartIds = new Set(Object.values(cart).map((c) => c.item.id));
     return restaurant.menuItems
       .filter((it) => !inCartIds.has(it.id) && it.isAvailable && (it.isBestseller || it.categoryId.includes("cat-4") || it.categoryId.includes("cat-5") || it.name.toLowerCase().includes("shake") || it.name.toLowerCase().includes("cooler")))
@@ -1007,9 +1007,9 @@ export default function CustomerTableMenu() {
 
   // Filtered and Categorically Sorted Menu Items
   const filteredItems = useMemo(() => {
-    if (!restaurant) return [];
-    const catMap = new Map(restaurant.categories.map((c) => [c.id, c.name.toLowerCase()]));
-    const catOrderMap = new Map(restaurant.categories.map((c, idx) => [c.id, c.sortOrder ?? idx]));
+    if (!restaurant?.menuItems) return [];
+    const catMap = new Map((restaurant.categories || []).map((c) => [c.id, c.name.toLowerCase()]));
+    const catOrderMap = new Map((restaurant.categories || []).map((c, idx) => [c.id, c.sortOrder ?? idx]));
 
     const items = restaurant.menuItems.filter((item) => {
       // Category filter
@@ -1482,7 +1482,7 @@ export default function CustomerTableMenu() {
             const hasCustomisation = Boolean((item.variants && item.variants.length > 0) || (item.addons && item.addons.length > 0));
             const prevItem = idx > 0 ? filteredItems[idx - 1] : null;
             const isNewCategory = selectedCategory === "all" && !searchQuery.trim() && (!prevItem || prevItem.categoryId !== item.categoryId);
-            const currentCat = restaurant.categories.find((c) => c.id === item.categoryId);
+            const currentCat = restaurant?.categories?.find((c) => c.id === item.categoryId);
 
             return (
               <Fragment key={item.id}>
@@ -2392,7 +2392,7 @@ export default function CustomerTableMenu() {
                 {t.selectYourTable}
               </p>
               <div className="grid grid-cols-3 gap-2.5">
-                {restaurant.tables.map((tbl) => {
+                {(restaurant?.tables || []).map((tbl) => {
                   const isCurrent = tbl.id === currentTable?.id;
                   return (
                     <Link

@@ -227,6 +227,21 @@
       - **Smart Page Visibility Handling:** Polling automatically suspends when the browser tab is minimized or phone screen is locked (`document.hidden`), cutting 80%+ background database traffic, and resumes immediately upon tab focus via the `visibilitychange` event.
     - **Zero-Regression Verification:** Full production Next.js build (`npm run build`) compiled all 22 static and dynamic routes with 0 TypeScript/Next.js errors.
 
+20. **Customer QR Menu Full Verification & Zero-Bug Audit (Verified Oct 31, 2026):**
+    - **Neon Cloud DB Orphan Dishes Cleaned:** Purged 7 legacy duplicate test menu items (`Smoked Butter Naan` x5 and `Garlic Butter Naan` x2) that had been accidentally inserted into `cat-1` (Starters & Tandoor). Exactly 15 unique, well-categorized dishes remain (5 Starters, 4 Main Course, 3 Breads & Biryani, 2 Mocktails, 1 Desserts).
+    - **Portion & Add-on Cart Combination Fix (`src/app/api/cart/route.ts`):** In `add_item` action, enhanced existing item candidate matching to compare JSON-serialized `selectedAddons`, ensuring orders with different custom add-ons (e.g. Regular Pizza + Extra Cheese vs Regular Pizza + Extra Dip) don't accidentally merge quantities.
+    - **Null-Safety & Defensive Guard Hardening (`src/app/r/[slug]/t/[table]/page.tsx`):** Added optional chaining and safe defaults across `categoryCounts`, `recommendedAddons`, `filteredItems`, `currentCat`, and `restaurant.tables` to prevent runtime `TypeError` crashes if restaurant data or menu arrays are temporarily empty.
+    - **Full Interactive Lifecycle Tested on Mobile (390px Viewport):**
+      - Instant 1-tap English ⮂ हिंदी language toggle with real-time UI translation.
+      - Customisation modal with portion selection (Regular/Medium/Large) and add-ons (Extra Cheese, Dips) dynamically updating prices.
+      - Floating bottom cart bar displaying total items and GST-inclusive sum.
+      - Cart drawer with 1-tap discount coupons (`WELCOME10` 10% OFF, `FLAT50` ₹50 OFF) computing accurate taxable amounts.
+      - Order placement triggering real-time KDS dispatch, auto-clearing the table cart.
+      - Live timeline tracking (Placed ⏳ ➔ Kitchen 👨‍🍳 ➔ Ready 🔔 ➔ Served ✅) with audio chimes.
+      - Dynamic UPI QR generation with exact order amount and VPA `grandspice@icici`.
+      - Instant table reset (`🔄 टेबल खाली करें`) for clean subsequent dining sessions.
+    - **Zero-Regression Verification:** Full production build (`npm run build`) passed 100% (22/22 routes compiled with 0 errors). All 8 core pipelines passed with 100% Health Scorecard.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

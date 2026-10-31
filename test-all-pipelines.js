@@ -181,19 +181,28 @@ async function runDeepPipelineAudit() {
 
     const kds1 = await request(`${BASE_URL}/api/orders`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': 'admin2026'
+      }
     }, { orderId: testOrderId, status: 'in_progress' });
     if (kds1.status !== 200) throw new Error(`KDS in_progress failed: HTTP ${kds1.status}`);
 
     const kds2 = await request(`${BASE_URL}/api/orders`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': 'admin2026'
+      }
     }, { orderId: testOrderId, status: 'ready' });
     if (kds2.status !== 200) throw new Error(`KDS ready failed: HTTP ${kds2.status}`);
 
     const kds3 = await request(`${BASE_URL}/api/orders`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': 'admin2026'
+      }
     }, { orderId: testOrderId, status: 'served', paymentStatus: 'paid' });
     if (kds3.status !== 200) throw new Error(`KDS bill settlement failed: HTTP ${kds3.status}`);
 

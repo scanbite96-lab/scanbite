@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Item is required" }, { status: 400 });
       }
 
-      const existing = await prisma.tableCartItem.findFirst({
+      const existingCandidates = await prisma.tableCartItem.findMany({
         where: {
           cartId: cart.id,
           menuItemId: item.id,
@@ -119,6 +119,11 @@ export async function POST(request: NextRequest) {
           notes: notes || null,
         },
       });
+
+      const addonStr = JSON.stringify(selectedAddons || []);
+      const existing = existingCandidates.find(
+        (c) => JSON.stringify(c.selectedAddons || []) === addonStr
+      );
 
       if (existing) {
         await prisma.tableCartItem.update({
