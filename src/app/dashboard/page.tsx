@@ -2103,17 +2103,17 @@ export default function RestaurantDashboard() {
             {/* Row 1: Brand Info & Top Action Controls */}
             <div className="py-2.5 flex items-center justify-between gap-3 border-b border-slate-800/80">
               {/* Brand & Identity */}
-              <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                 <div className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center font-black text-white text-base shadow-md shadow-orange-500/30 shrink-0">
                   ⚡
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     {isOwner && availableRestaurants.length > 1 ? (
                       <select
                         value={restaurantSlug}
                         onChange={(e) => setRestaurantSlug(e.target.value)}
-                        className="bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm px-2 py-1 rounded-lg focus:outline-none"
+                        className="bg-slate-800 border border-slate-700 text-white font-bold text-xs sm:text-sm px-2 py-1 rounded-lg focus:outline-none max-w-[120px] sm:max-w-[180px] md:max-w-[240px]"
                       >
                         {availableRestaurants.map((r) => (
                           <option key={r.slug} value={r.slug}>
@@ -2122,12 +2122,14 @@ export default function RestaurantDashboard() {
                         ))}
                       </select>
                     ) : (
-                      <h1 className="font-bold text-sm sm:text-base text-white tracking-wide truncate">{restaurant.name}</h1>
+                      <h1 className="font-bold text-sm sm:text-base text-white tracking-wide truncate max-w-[110px] sm:max-w-[190px] md:max-w-none">{restaurant.name}</h1>
                     )}
 
-                    <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+                    {/* LIVE badge: green dot on xs, pill on sm+ — never overlaps buttons */}
+                    <span className="shrink-0 hidden sm:flex items-center gap-1 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
                       LIVE
                     </span>
+                    <span className="shrink-0 w-2 h-2 rounded-full bg-emerald-400 animate-pulse sm:hidden" />
                   </div>
                   <p className="hidden md:block text-[11px] text-slate-400 truncate">
                     {isOwner ? "Owner Executive & Management Command Center" : "Kitchen Display & Floor Operations"}
@@ -2136,18 +2138,18 @@ export default function RestaurantDashboard() {
               </div>
 
               {/* Action Controls & User Account */}
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Test Sound */}
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-1">
+                {/* Test Sound — icon only on xs/sm, label on md+ */}
                 <button
                   onClick={() => {
                     if (!soundEnabled) setSoundEnabled(true);
                     playNewOrderChime();
                   }}
-                  className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-orange-400 text-xs font-bold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer"
+                  className="p-1.5 md:px-2.5 md:py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-orange-400 text-xs font-bold flex items-center gap-1.5 transition whitespace-nowrap cursor-pointer"
                   title="Test Sound Chime (Unlocks AudioContext in Browser)"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Test Sound</span>
+                  <span className="hidden md:inline">Test Sound</span>
                 </button>
 
                 {/* Sound Toggle */}
@@ -2166,12 +2168,12 @@ export default function RestaurantDashboard() {
                   {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                 </button>
 
-                {/* Diner Menu Preview Link */}
+                {/* Diner Menu Preview Link — lg+ only so it doesn't crowd tablet */}
                 <a
                   href={`/r/${restaurant.slug}/t/${restaurant.tables[0]?.id || "tbl-1"}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition whitespace-nowrap"
+                  className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition whitespace-nowrap"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-orange-400" />
                   <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
@@ -2181,7 +2183,7 @@ export default function RestaurantDashboard() {
                 {!isOwner && canManageMenu && (
                   <button
                     onClick={() => setIsStaffStockModalOpen(true)}
-                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap"
+                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap"
                     title="Mark Finished Dishes Out of Stock"
                   >
                     <Ban className="w-3.5 h-3.5 text-rose-400" />
@@ -2190,8 +2192,8 @@ export default function RestaurantDashboard() {
                 )}
 
                 {/* User Account Info & Sign Out */}
-                <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-                  <div className="hidden sm:flex flex-col text-right">
+                <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-800">
+                  <div className="hidden md:flex flex-col text-right">
                     <span className="text-[11px] font-bold text-white flex items-center justify-end gap-1 whitespace-nowrap">
                       {isOwner ? (
                         <span className="text-amber-400 font-extrabold flex items-center gap-1">
@@ -2203,14 +2205,14 @@ export default function RestaurantDashboard() {
                         </span>
                       )}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">
+                    <span className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]">
                       {isOwner ? (authUser?.ownerEmail || restaurant.slug) : "Floor Mode"}
                     </span>
                   </div>
 
                   <button
                     onClick={handleLogout}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition shadow-sm active:scale-95 whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-rose-950/50 hover:bg-rose-900/70 border border-rose-500/30 text-rose-300 hover:text-white text-xs font-bold transition shadow-sm active:scale-95 whitespace-nowrap cursor-pointer"
                     title="Sign Out / Lock Dashboard"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -2220,8 +2222,11 @@ export default function RestaurantDashboard() {
               </div>
             </div>
 
-            {/* Row 2: Navigation Tabs Bar - Full horizontal row with zero wrapping and smooth scroll */}
-            <div className="py-1.5 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            {/* Row 2: Navigation Tabs Bar — scrollable with right-fade hint on mobile */}
+            <div className="relative py-1.5">
+              {/* gradient hint so users know more tabs exist off-screen */}
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent z-10 md:hidden" aria-hidden="true" />
+            <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pr-6 md:pr-0">
               {isOwner ? (
                 <nav className="flex items-center gap-1.5 py-0.5">
                   <button
@@ -2367,6 +2372,7 @@ export default function RestaurantDashboard() {
                 </div>
               )}
             </div>
+            </div>{/* end relative fade wrapper */}
           </div>
         </header>
 
@@ -3076,45 +3082,48 @@ export default function RestaurantDashboard() {
         {(isOwner || canManageMenu) && activeTab === "menu" && (
           <div className="space-y-6">
             {/* Header / Filter */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Boxes className="w-5 h-5 text-orange-600" />
-                  <span>Menu Catalog &amp; Stock Portion Tracking (स्टॉक एवं पोर्शन नियंत्रण)</span>
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Track remaining daily portions, set low stock alert thresholds, and toggle Sold Out when batches finish.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search dish..."
-                    value={menuSearch}
-                    onChange={(e) => setMenuSearch(e.target.value)}
-                    className="pl-9 pr-3 py-1.5 text-xs bg-slate-100 rounded-lg border border-slate-200 focus:outline-none focus:bg-white"
-                  />
+            <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Boxes className="w-5 h-5 text-orange-600 shrink-0" />
+                    <span>Menu Catalog &amp; Stock Portion Tracking (स्टॉक एवं पोर्शन नियंत्रण)</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Track remaining daily portions, set low stock alert thresholds, and toggle Sold Out when batches finish.
+                  </p>
                 </div>
 
-                {isOwner && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setIsCategoryModalOpen(true)}
-                      className="bg-white hover:bg-orange-50 text-orange-600 border border-orange-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-xs"
-                    >
-                      <Plus className="w-4 h-4" /> Manage Categories
-                    </button>
-                    <button
-                      onClick={() => setIsAddDishOpen(true)}
-                      className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20"
-                    >
-                      <Plus className="w-4 h-4" /> Add New Dish
-                    </button>
+                {/* Search + Owner Buttons — stack vertically on xs, row on sm+ */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search dish..."
+                      value={menuSearch}
+                      onChange={(e) => setMenuSearch(e.target.value)}
+                      className="w-full sm:w-auto pl-9 pr-3 py-1.5 text-xs bg-slate-100 rounded-lg border border-slate-200 focus:outline-none focus:bg-white"
+                    />
                   </div>
-                )}
+
+                  {isOwner && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsCategoryModalOpen(true)}
+                        className="flex-1 sm:flex-none bg-white hover:bg-orange-50 text-orange-600 border border-orange-300 text-xs font-bold px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs whitespace-nowrap"
+                      >
+                        <Plus className="w-4 h-4" /> Manage Categories
+                      </button>
+                      <button
+                        onClick={() => setIsAddDishOpen(true)}
+                        className="flex-1 sm:flex-none bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-orange-600/20 whitespace-nowrap"
+                      >
+                        <Plus className="w-4 h-4" /> Add New Dish
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -4369,20 +4378,20 @@ export default function RestaurantDashboard() {
                   </label>
                   <span className="text-[10px] text-orange-600 font-bold">{newDishVariants.length} Added</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <input
                     type="text"
                     placeholder="Size (e.g. Half Plate)"
                     value={variantInputName}
                     onChange={(e) => setVariantInputName(e.target.value)}
-                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                    className="flex-1 min-w-[120px] bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
                   />
                   <input
                     type="number"
                     placeholder="Price (₹)"
                     value={variantInputPrice}
                     onChange={(e) => setVariantInputPrice(e.target.value)}
-                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                    className="w-20 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
                   />
                   <button
                     type="button"
@@ -4396,7 +4405,7 @@ export default function RestaurantDashboard() {
                         setVariantInputPrice("");
                       }
                     }}
-                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold text-xs shrink-0"
+                    className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold text-xs whitespace-nowrap"
                   >
                     + Add Size
                   </button>
@@ -4431,20 +4440,20 @@ export default function RestaurantDashboard() {
                   </label>
                   <span className="text-[10px] text-sky-600 font-bold">{newDishAddons.length} Added</span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <input
                     type="text"
                     placeholder="Add-on (e.g. Extra Cheese)"
                     value={addonInputName}
                     onChange={(e) => setAddonInputName(e.target.value)}
-                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                    className="flex-1 min-w-[120px] bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
                   />
                   <input
                     type="number"
                     placeholder="+Price (₹)"
                     value={addonInputPrice}
                     onChange={(e) => setAddonInputPrice(e.target.value)}
-                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
+                    className="w-20 bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs text-slate-800 focus:outline-none"
                   />
                   <button
                     type="button"
@@ -4458,7 +4467,7 @@ export default function RestaurantDashboard() {
                         setAddonInputPrice("");
                       }
                     }}
-                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-xs shrink-0"
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-bold text-xs whitespace-nowrap"
                   >
                     + Add Extra
                   </button>
@@ -4645,20 +4654,20 @@ export default function RestaurantDashboard() {
               {/* Portion Sizes / Variants */}
               <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50/50">
                 <label className="block font-bold text-slate-800 mb-1">Portion Sizes / Variants (Half/Full)</label>
-                <div className="flex gap-2 mb-2">
+                <div className="flex flex-wrap gap-2 mb-2">
                   <input
                     type="text"
                     placeholder="Size (e.g. Half, Full)"
                     value={editVariantInputName}
                     onChange={(e) => setEditVariantInputName(e.target.value)}
-                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                    className="flex-1 min-w-[120px] bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
                   />
                   <input
                     type="number"
                     placeholder="Price"
                     value={editVariantInputPrice}
                     onChange={(e) => setEditVariantInputPrice(e.target.value)}
-                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                    className="w-20 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
                   />
                   <button
                     type="button"
@@ -4672,7 +4681,7 @@ export default function RestaurantDashboard() {
                         setEditVariantInputPrice("");
                       }
                     }}
-                    className="px-3 py-1.5 bg-orange-600 text-white rounded-xl font-bold text-xs hover:bg-orange-700 shrink-0"
+                    className="px-3 py-1.5 bg-orange-600 text-white rounded-xl font-bold text-xs hover:bg-orange-700 whitespace-nowrap"
                   >
                     + Add Size
                   </button>
@@ -4698,20 +4707,20 @@ export default function RestaurantDashboard() {
               {/* Addons */}
               <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50/50">
                 <label className="block font-bold text-slate-800 mb-1">Add-ons / Extras (Extra Cheese, Dips)</label>
-                <div className="flex gap-2 mb-2">
+                <div className="flex flex-wrap gap-2 mb-2">
                   <input
                     type="text"
                     placeholder="Addon (e.g. Extra Cheese)"
                     value={editAddonInputName}
                     onChange={(e) => setEditAddonInputName(e.target.value)}
-                    className="flex-1 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                    className="flex-1 min-w-[120px] bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
                   />
                   <input
                     type="number"
                     placeholder="Extra ₹"
                     value={editAddonInputPrice}
                     onChange={(e) => setEditAddonInputPrice(e.target.value)}
-                    className="w-24 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                    className="w-20 bg-white border border-slate-200 px-2.5 py-1.5 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-orange-500"
                   />
                   <button
                     type="button"
@@ -4725,7 +4734,7 @@ export default function RestaurantDashboard() {
                         setEditAddonInputPrice("");
                       }
                     }}
-                    className="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold text-xs hover:bg-sky-700 shrink-0"
+                    className="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold text-xs hover:bg-sky-700 whitespace-nowrap"
                   >
                     + Add Extra
                   </button>
