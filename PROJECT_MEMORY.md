@@ -153,8 +153,31 @@
 
 ---
 
-## 📋 Next Tasks Backlog (ROADMAP)
-- **[P-08] Staff / Waiter Mobile PIN Mode:** Dedicated mobile view for waiters with buzzers.
-- **[P-07] Table Floor Plan & Visual Grid:** Interactive colored table grid (🟢 Vacant, 🔴 Occupied, 🟡 Dirty).
-- **[P-09] Daily Inventory Stock Count & Auto-Sold-Out:** Set daily batch limits (e.g. 20 plates Biryani).
-- **[P-16] Razorpay Webhook Auto-Verification:** Automatic payment reconciliation.
+## 📋 Prioritized Feature Backlog (ROADMAP)
+
+1. **[P-07] Interactive Table Floor Plan & Live Status Grid:**
+   - **Color-Coded Visual Floor Plan:**
+     - 🟢 **Green (Vacant / खाली):** Table is free and ready for new walk-ins or QR scans.
+     - 🔴 **Red (Occupied & Dining / व्यस्त):** Order is cooking or active dining session in progress.
+     - 🟡 **Yellow (Bill Requested / बिल प्रतीक्षित):** Table has called for the bill; outstanding balance counter alert.
+     - 🔵 **Blue (Service Alert / सहायता अलर्ट):** Active call for Water 💧 or Waiter 🛎️.
+   - **Quick Actions:** 1-click Vacate & Reset Table, Quick Table Transfer / Shift, and Live Table Cart peek.
+
+2. **[P-08] Dedicated Mobile Waiter & Captain Mode (`/waiter` or `/dashboard/mobile`):**
+   - Ultra-fast mobile layout optimized for staff phones (one-hand operation).
+   - Instant 4-digit PIN authentication remembering session for the work shift.
+   - Live Haptic Vibration + Audio Ding Buzzer when an assigned table requests Water, Waiter, or Bill.
+   - 1-tap table order taking / punching directly at the table for guests who prefer ordering via waiter.
+
+3. **[P-09] Daily Batch Limit & Auto-Sold-Out Live Inventory Counter:**
+   - Restaurant owner/chef can set a daily preparation quantity (e.g. *Special Hyderabadi Dum Biryani: 25 portions*).
+   - Real-time countdown on every order placed (`25 ➔ 24 ➔ 23...`).
+   - Automatic live transition to "Sold Out" badge when count hits 0, preventing accidental over-ordering.
+   - Low stock warning banner in kitchen KDS when portions fall below threshold (< 3).
+
+4. **[P-10] Automated WhatsApp Digital Receipt & Google Review Booster:**
+   - 1-click or automatic WhatsApp receipt dispatch on bill settlement with itemized dish summary and UPI transaction ID.
+   - Integrated 5-Star Google Review booster link prompting happy diners (rated 4-5 stars) to publish their review directly on Google Maps.
+
+5. **[P-16] Razorpay & Online UPI Webhook Auto-Verification:**
+   - Seamless instant payment confirmation webhook for automatic order settlement.
