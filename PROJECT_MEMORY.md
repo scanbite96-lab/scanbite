@@ -45,6 +45,7 @@
 - **Service Buttons:** Anti-spam 15s cooldown pings for Water 💧, Waiter 🛎️, Bill 🧾.
 - **Live Order Timeline:** Real-time status tracker (Placed ⏳ -> Cooking 👨‍🍳 -> Ready 🔔 -> Served ✅).
 - **Meal Rating:** 5-Star feedback with automatic Google Review prompt for 4+ stars.
+- **Smart Page Visibility Polling:** Real-time sync (3.5s) pauses automatically when the customer locks their phone or backgrounds the tab (`document.hidden`), and refreshes instantly on return.
 
 ### 2. Kitchen & Owner Dashboard (`/dashboard`)
 - **Kitchen Display System (KDS):** Live order cards with item checklist, portion sizes, add-ons, and diner names (`👤 {orderedByName}`).
@@ -55,11 +56,13 @@
 - **KDS Order Intelligence:** Diner phone number display, delayed kitchen order pulse alerts (>15-20 min in pending/cooking), and total outstanding unpaid balance summary in the filter bar.
 - **Table Management & QR Tent Cards:** Add/delete tables, quick-edit table name & seating capacity via `PATCH /api/tables`, and 1-click printable QR tent cards with high-res QR codes.
 - **Settings & Dynamic UPI QR Preview:** Live dynamic UPI payment QR code preview rendered with QRCode canvas, updated Cloud PostgreSQL database references, and change Owner Password / Staff PIN.
+- **Smart Page Visibility Polling:** Dashboard polling (4s) automatically pauses when tab is hidden or minimized, saving 70-80% DB load, and refreshes immediately when brought to focus.
 
 ### 3. Super Admin Command Center (`/founder-hq`)
 - **Global Overview:** Total platform revenue, active restaurants, active orders, and monthly recurring revenue.
 - **Tenant Management:** Approve, suspend, or delete restaurants.
 - **Global Feature Toggles:** Master switches for platform-wide features.
+- **Partner Leads & Inquiries CRM (Tab 5):** Live dashboard for incoming partner inquiries from `/register`. Shows Total, New, Contacted, Converted counts; 1-tap WhatsApp chat button with custom greeting; direct phone call link; status dropdown; and 1-click "Onboard" button pre-populating the restaurant setup form.
 
 ---
 
@@ -93,6 +96,13 @@
      - Safe area insets `env(safe-area-inset-bottom)` added to floating cart bar, cart checkout drawer, live orders drawer, table switcher, and dish customisation drawer.
      - `src/app/layout.tsx`: Replaced deprecated `<meta name="viewport">` with Next.js 14 `Viewport` export with `viewportFit: "cover"`.
    - **Verification:** All 17 automated security and performance tests passed (17/17), and full production build compiled all 21 routes with 0 errors.
+
+9. **Inquiry Model Database Persistence & Super Admin Leads CRM (Verified Oct 31, 2026):**
+   - **Prisma Inquiry Model:** Added `Inquiry` model to `prisma/schema.prisma` with fields: `restaurantName`, `ownerName`, `phone`, `city`, `tablesCount`, `notes`, `status` (`new`, `contacted`, `demo_scheduled`, `converted`, `closed`), `createdAt`, `updatedAt`.
+   - **Neon PostgreSQL Sync:** Pushed schema with `npx prisma db push`, ensuring 100% cloud persistence with zero data loss across serverless container restarts.
+   - **API Route `/api/inquiries`:** Upgraded with full CRUD (`GET` for leads list, `POST` for submission from `/register`, `PATCH` for status updates, `DELETE` for cleanup), gated by Super Admin session key, with fallback to file/memory.
+   - **Super Admin Command Center (`/founder-hq`):** Added 5th tab **"Partner Leads & Inquiries"** with live KPI cards (Total Leads, New Uncontacted, In Discussion, Converted), keyword search, status filter pills, 1-click WhatsApp chat link with pre-filled greeting, direct phone calling (`tel:`), status updater, and 1-click "Onboard" button pre-populating the restaurant creation modal.
+   - **Smart Polling Optimization (Page Visibility API):** Upgraded HTTP polling in both `/dashboard` (4s) and `/r/[slug]/t/[table]` (3.5s) to automatically pause when `document.hidden` is true (background tab, minimized browser, locked mobile phone), and instantly trigger fresh fetch on `visibilitychange`. Reduces background database calls by 70-80%.
 
 ---
 

@@ -676,8 +676,25 @@ export default function RestaurantDashboard() {
   useEffect(() => {
     if (!authUser) return;
     loadDashboardData();
-    const interval = setInterval(loadDashboardData, 4000); // 4-second polling
-    return () => clearInterval(interval);
+
+    // Smart Polling: Pause when browser tab is hidden/minimized to save bandwidth and DB queries
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      loadDashboardData();
+    }, 4000);
+
+    // Instant refresh when user returns to tab
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadDashboardData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [restaurantSlug, authUser]);
 
   // Generate QR codes for tables (memoized to eliminate 4-second CPU storm)

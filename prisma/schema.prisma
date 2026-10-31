@@ -195,3 +195,17 @@ model Staff {
   updatedAt         DateTime   @updatedAt
   restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 }
+
+model Inquiry {
+  id             String   @id @default(cuid())
+  restaurantName String
+  ownerName      String?  @default("Partner")
+  phone          String
+  city           String?  @default("India")
+  tablesCount    String?
+  notes          String?
+  status         String   @default("new") // new, contacted, demo_scheduled, converted, closed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+

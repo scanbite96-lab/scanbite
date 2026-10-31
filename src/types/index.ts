@@ -246,3 +246,19 @@ export type SystemHealthInfo = {
   totalRestaurants: number;
   serverTime: string;
 };
+
+export type InquiryStatus = "new" | "contacted" | "demo_scheduled" | "converted" | "closed";
+
+export type Inquiry = {
+  id: string;
+  restaurantName: string;
+  ownerName?: string | null;
+  phone: string;
+  city?: string | null;
+  tablesCount?: string | null;
+  notes?: string | null;
+  status: InquiryStatus;
+  createdAt: string;
+  updatedAt?: string;
+};
+

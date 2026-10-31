@@ -395,11 +395,27 @@ export default function CustomerTableMenu() {
   useEffect(() => {
     fetchOrders();
     syncTableCart();
+
+    // Smart Polling: Pause when browser tab is hidden/phone locked to conserve battery and avoid wasted queries
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchOrders();
       syncTableCart();
     }, 3500); // 3.5-second real-time sync for orders and table cart
-    return () => clearInterval(interval);
+
+    // Instant refresh when diner unlocks phone or returns to tab
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchOrders();
+        syncTableCart();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [restaurant, currentTable]);
 
   // Cart operations with haptic vibration feedback
