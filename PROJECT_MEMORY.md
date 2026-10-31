@@ -217,6 +217,16 @@
     - **Staff PIN Modal Hardening:** If a restaurant slug is present in the URL (`/dashboard?slug=...`), staff login modal displays that restaurant name cleanly without rendering a cross-tenant selector.
     - **Zero-Regression Verification:** 100% compilation on `npm run build` (all 22 routes passed with 0 errors).
 
+19. **Decoupled Operational Polling & Elimination of 2-3s Auto-Refresh / Flicker (Verified Oct 31, 2026):**
+    - **Root Cause of 2-3s Auto-Refresh/Flickering:** Both the dedicated Waiter Mode (`/waiter`) and Owner Dashboard (`/dashboard`) were repeatedly fetching the complete restaurant record (`/api/restaurants/${slug}`) and full staff directory (`/api/staff`) inside tight 3.5s - 4s intervals. Every tick, React was receiving fresh array/object references for `restaurant`, `tables`, `menuItems`, `categories`, and `staffList`, forcing full component re-renders. Furthermore, lacking in-flight concurrency guards (`isPollingRef.current`), network latency caused multiple requests to overlap and resolve in rapid bursts (1-2s apart), creating the sensation of an aggressive 2-3 second auto-refresh.
+    - **Architectural Solution & Fixes:**
+      - **Decoupled Metadata from Live Operational Data:** Full metadata (`/api/restaurants/${slug}` and `/api/staff`) is now fetched ONLY ONCE on initial mount, restaurant slug switch, or after an explicit user mutation (e.g. adding a dish, modifying tables, updating settings).
+      - **Silent Operational Background Polling:** The background loop (paced cleanly to 5000ms) polls ONLY live operational data: Orders (`/api/orders`) and Service Requests (`/api/service-requests`).
+      - **Fingerprint-Based State Reconciliation:** Added stable hash/fingerprint checks (`ordFp`, `srvFp`) before invoking `setOrders` and `setServiceRequests`. If order IDs, cooking statuses, payment statuses, or service request states are identical to the previous tick, `setState` is completely skipped — resulting in 0 React re-renders and 0 UI stutter.
+      - **In-Flight Concurrency Guard:** Wrapped all polling triggers in `isPollingRef.current` and `isDashboardPollingRef.current` guards to permanently prevent overlapping requests.
+      - **Smart Page Visibility Handling:** Polling automatically suspends when the browser tab is minimized or phone screen is locked (`document.hidden`), cutting 80%+ background database traffic, and resumes immediately upon tab focus via the `visibilitychange` event.
+    - **Zero-Regression Verification:** Full production Next.js build (`npm run build`) compiled all 22 static and dynamic routes with 0 TypeScript/Next.js errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

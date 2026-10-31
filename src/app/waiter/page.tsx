@@ -73,6 +73,10 @@ export default function WaiterMobilePage() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const lastAlertsCountRef = useRef<number>(0);
   const isFirstLoadRef = useRef<boolean>(true);
+  const restaurantRef = useRef<Restaurant | null>(null);
+  const isPollingRef = useRef<boolean>(false);
+  const lastOrdersFpRef = useRef<string>("");
+  const lastSrvFpRef = useRef<string>("");
 
   // --- TABLE FILTER & DETAIL MODAL ---
   const [tableFilter, setTableFilter] = useState<"all" | "vacant" | "dining" | "bill" | "alert">("all");
@@ -123,12 +127,74 @@ export default function WaiterMobilePage() {
   }, []);
 
   // 2. Fetch Restaurant Data & Live Updates
+  // 2. Silent Operational Polling (Orders & Service Requests only)
+  // Decoupled from static restaurant/menu data to eliminate 2-3s auto-refresh flickering
+  const pollLiveOperationalData = async (targetId?: string, force = false) => {
+    const restId = targetId || restaurantRef.current?.id;
+    if (!restId) return;
+
+    if (!force) {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isPollingRef.current) return;
+    }
+
+    isPollingRef.current = true;
+    try {
+      const [ordersRes, srvRes] = await Promise.all([
+        fetch(`/api/orders?restaurantId=${restId}`),
+        fetch(`/api/service-requests?restaurantId=${restId}`),
+      ]);
+
+      let hasStateChanged = false;
+
+      if (ordersRes.ok) {
+        const ordersData = await ordersRes.json();
+        const ordArray = Array.isArray(ordersData) ? ordersData : [];
+        const ordFp = ordArray.map((o: Order) => `${o.id}_${o.status}_${o.paymentStatus}_${o.items?.length || 0}`).join("|");
+        if (force || ordFp !== lastOrdersFpRef.current) {
+          lastOrdersFpRef.current = ordFp;
+          setOrders(ordArray);
+          hasStateChanged = true;
+        }
+      }
+
+      if (srvRes.ok) {
+        const srvData = await srvRes.json();
+        const pendingSrv = Array.isArray(srvData) ? srvData.filter((s: ServiceRequest) => s.status === "pending") : [];
+        const srvFp = pendingSrv.map((s: ServiceRequest) => `${s.id}_${s.status}`).join("|");
+        if (force || srvFp !== lastSrvFpRef.current) {
+          lastSrvFpRef.current = srvFp;
+          setServiceRequests(pendingSrv);
+          hasStateChanged = true;
+
+          // Buzzer Check: If new urgent alert arrived
+          const totalAlertsNow = pendingSrv.length;
+          if (!isFirstLoadRef.current && totalAlertsNow > lastAlertsCountRef.current) {
+            triggerBuzzer();
+          }
+          lastAlertsCountRef.current = totalAlertsNow;
+        }
+        isFirstLoadRef.current = false;
+      }
+
+      if (hasStateChanged || force) {
+        setLastRefreshed(new Date());
+      }
+    } catch (err) {
+      console.warn("Silent live poll warning:", err);
+    } finally {
+      isPollingRef.current = false;
+    }
+  };
+
+  // 3. Full Restaurant Metadata Fetch (Only run on mount, slug switch, or manual refresh)
   const fetchRestaurantData = async (slugToUse: string, isSilent = false) => {
     if (!isSilent) setIsLoadingData(true);
     try {
       const res = await fetch(`/api/restaurants/${slugToUse}`);
       if (!res.ok) throw new Error("Restaurant not found");
       const data: Restaurant = await res.json();
+      restaurantRef.current = data;
       setRestaurant(data);
       setTables(data.tables || []);
       setMenuItems(data.menuItems || []);
@@ -139,34 +205,13 @@ export default function WaiterMobilePage() {
         setSelectedPunchTableNumber(data.tables[0].tableNumber);
       }
 
-      // Fetch live orders
-      const ordersRes = await fetch(`/api/orders?restaurantId=${data.id}`);
-      if (ordersRes.ok) {
-        const ordersData = await ordersRes.json();
-        setOrders(Array.isArray(ordersData) ? ordersData : []);
-      }
-
-      // Fetch service requests
-      const srvRes = await fetch(`/api/service-requests?restaurantId=${data.id}`);
-      if (srvRes.ok) {
-        const srvData = await srvRes.json();
-        const pendingSrv = Array.isArray(srvData) ? srvData.filter((s: ServiceRequest) => s.status === "pending") : [];
-        setServiceRequests(pendingSrv);
-
-        // Buzzer Check: If new urgent alert arrived
-        const totalAlertsNow = pendingSrv.length;
-        if (!isFirstLoadRef.current && totalAlertsNow > lastAlertsCountRef.current) {
-          triggerBuzzer();
-        }
-        lastAlertsCountRef.current = totalAlertsNow;
-        isFirstLoadRef.current = false;
-      }
-
-      setLastRefreshed(new Date());
+      // Fetch initial orders & alerts silently without race condition
+      await pollLiveOperationalData(data.id, true);
     } catch (err) {
       console.warn("Error fetching waiter data:", err);
       // Fallback for demo
-      if (slugToUse === "grand-spice" || !restaurant) {
+      if (slugToUse === "grand-spice" || !restaurantRef.current) {
+        restaurantRef.current = DEMO_RESTAURANT;
         setRestaurant(DEMO_RESTAURANT);
         setTables(DEMO_RESTAURANT.tables);
         setMenuItems(DEMO_RESTAURANT.menuItems);
@@ -175,6 +220,7 @@ export default function WaiterMobilePage() {
           setSelectedPunchTableId(DEMO_RESTAURANT.tables[0].id);
           setSelectedPunchTableNumber(DEMO_RESTAURANT.tables[0].tableNumber);
         }
+        await pollLiveOperationalData(DEMO_RESTAURANT.id, true);
       }
     } finally {
       if (!isSilent) setIsLoadingData(false);
@@ -191,14 +237,26 @@ export default function WaiterMobilePage() {
     }
   }, [session, isLoadingAuth]);
 
-  // Real-time Polling every 3.5 seconds
+  // Real-time Silent Polling: Pause when tab is hidden, resume immediately on focus
   useEffect(() => {
     if (!session && slugInput !== "grand-spice") return;
+
     const interval = setInterval(() => {
-      const activeSlug = session?.slug || slugInput || "grand-spice";
-      fetchRestaurantData(activeSlug, true);
-    }, 3500);
-    return () => clearInterval(interval);
+      pollLiveOperationalData();
+    }, 5000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        pollLiveOperationalData(undefined, true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [session, slugInput]);
 
   // --- SOUND & HAPTIC VIBRATION BUZZER ENGINE ---
@@ -518,8 +576,8 @@ export default function WaiterMobilePage() {
         setDinerGuestName("");
         setPunchSuccessMsg(`Order #${data.id.slice(-4).toUpperCase()} sent directly to Kitchen! 👨‍🍳`);
         triggerBuzzer();
-        // Refresh orders
-        fetchRestaurantData(restaurant.slug, true);
+        // Refresh orders immediately
+        pollLiveOperationalData(restaurant.id, true);
         setTimeout(() => setPunchSuccessMsg(null), 5000);
       }
     } catch {

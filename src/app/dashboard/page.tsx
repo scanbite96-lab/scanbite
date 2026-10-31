@@ -85,6 +85,10 @@ export default function RestaurantDashboard() {
   const lastLoadedSlugRef = useRef<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const lastQrFingerprintRef = useRef<string>("");
+  const restaurantRef = useRef<Restaurant | null>(null);
+  const isDashboardPollingRef = useRef<boolean>(false);
+  const lastDashboardOrdersFpRef = useRef<string>("");
+  const lastDashboardReqsFpRef = useRef<string>("");
 
   // KDS filter & search
   const [kdsFilter, setKdsFilter] = useState<"active" | "pending" | "cooking" | "ready" | "served" | "unpaid" | "all">("active");
@@ -578,11 +582,96 @@ export default function RestaurantDashboard() {
     isInitialOrdersLoadedRef.current = false;
     knownRequestIdsRef.current.clear();
     isInitialReqsLoadedRef.current = false;
+    lastDashboardOrdersFpRef.current = "";
+    lastDashboardReqsFpRef.current = "";
+    restaurantRef.current = null;
   }, [restaurantSlug]);
 
-  // Fetch current restaurant data
-  const loadDashboardData = async () => {
+  // Fetch current restaurant data:
+  // - isFullRefresh = true: Complete metadata load (initial mount, restaurant switch, staff/menu/settings update)
+  // - isFullRefresh = false: Ultra-fast background operational poll (Orders & Service Requests only)
+  // Decoupled to permanently eliminate the 2-3 second auto-refresh flicker & UI re-render storm
+  const loadDashboardData = async (isFullRefresh = true) => {
     if (!authUser) return;
+    const currentRest = restaurantRef.current;
+
+    // Fast-path: Background operational poll (Orders & Service Requests only)
+    if (!isFullRefresh && currentRest?.id) {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isDashboardPollingRef.current) return;
+      isDashboardPollingRef.current = true;
+      try {
+        const [ordRes, reqRes] = await Promise.all([
+          fetch(`/api/orders?restaurantId=${currentRest.id}`),
+          fetch(`/api/service-requests?restaurantId=${currentRest.id}`),
+        ]);
+
+        // Process Orders
+        if (ordRes.ok) {
+          const ordData: Order[] = await ordRes.json();
+          const ordArray = Array.isArray(ordData) ? ordData : [];
+          const ordFp = ordArray.map((o) => `${o.id}_${o.status}_${o.paymentStatus}_${o.items?.length || 0}`).join("|");
+
+          // Bulletproof Chime: Only ring when a genuinely brand-new order arrives (< 60s ago)
+          if (!isInitialOrdersLoadedRef.current) {
+            ordArray.forEach((o) => knownOrderIdsRef.current.add(o.id));
+            isInitialOrdersLoadedRef.current = true;
+          } else {
+            const brandNewOrders = ordArray.filter((o) => !knownOrderIdsRef.current.has(o.id));
+            if (brandNewOrders.length > 0) {
+              const hasFreshOrder = brandNewOrders.some(
+                (o) => Date.now() - new Date(o.createdAt).getTime() < 60000
+              );
+              if (hasFreshOrder) {
+                playNewOrderChime();
+              }
+              brandNewOrders.forEach((o) => knownOrderIdsRef.current.add(o.id));
+            }
+          }
+
+          if (ordFp !== lastDashboardOrdersFpRef.current) {
+            lastDashboardOrdersFpRef.current = ordFp;
+            setOrders(ordArray);
+          }
+        }
+
+        // Process Service Requests
+        if (reqRes.ok) {
+          const reqData: ServiceRequest[] = await reqRes.json();
+          const reqArray = Array.isArray(reqData) ? reqData : [];
+          const pendingReqs = reqArray.filter((r) => r.status === "pending");
+          const reqFp = reqArray.map((r) => `${r.id}_${r.status}`).join("|");
+
+          if (!isInitialReqsLoadedRef.current) {
+            pendingReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
+            isInitialReqsLoadedRef.current = true;
+          } else {
+            const brandNewReqs = pendingReqs.filter((r) => !knownRequestIdsRef.current.has(r.id));
+            if (brandNewReqs.length > 0) {
+              const hasFreshReq = brandNewReqs.some(
+                (r) => Date.now() - new Date(r.createdAt).getTime() < 60000
+              );
+              if (hasFreshReq) {
+                playServiceChime();
+              }
+              brandNewReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
+            }
+          }
+
+          if (reqFp !== lastDashboardReqsFpRef.current) {
+            lastDashboardReqsFpRef.current = reqFp;
+            setServiceRequests(reqArray);
+          }
+        }
+      } catch (err) {
+        console.warn("Silent dashboard poll warning:", err);
+      } finally {
+        isDashboardPollingRef.current = false;
+      }
+      return;
+    }
+
+    // Full Refresh: Restaurant Metadata, Menu, Tables, Staff & Form fields
     try {
       let restData: Restaurant | null = null;
       try {
@@ -602,6 +691,7 @@ export default function RestaurantDashboard() {
       }
 
       if (restData) {
+        restaurantRef.current = restData;
         setRestaurant(restData);
 
         // Auto sync form fields when switching restaurant or on initial load
@@ -622,13 +712,16 @@ export default function RestaurantDashboard() {
           const ordRes = await fetch(`/api/orders?restaurantId=${restData.id}`);
           if (ordRes.ok) {
             const ordData: Order[] = await ordRes.json();
+            const ordArray = Array.isArray(ordData) ? ordData : [];
+            const ordFp = ordArray.map((o) => `${o.id}_${o.status}_${o.paymentStatus}_${o.items?.length || 0}`).join("|");
+            lastDashboardOrdersFpRef.current = ordFp;
             
             // Bulletproof Chime: Only ring when a genuinely brand-new order arrives (< 60s ago)
             if (!isInitialOrdersLoadedRef.current) {
-              ordData.forEach((o) => knownOrderIdsRef.current.add(o.id));
+              ordArray.forEach((o) => knownOrderIdsRef.current.add(o.id));
               isInitialOrdersLoadedRef.current = true;
             } else {
-              const brandNewOrders = ordData.filter((o) => !knownOrderIdsRef.current.has(o.id));
+              const brandNewOrders = ordArray.filter((o) => !knownOrderIdsRef.current.has(o.id));
               if (brandNewOrders.length > 0) {
                 const hasFreshOrder = brandNewOrders.some(
                   (o) => Date.now() - new Date(o.createdAt).getTime() < 60000
@@ -639,7 +732,7 @@ export default function RestaurantDashboard() {
                 brandNewOrders.forEach((o) => knownOrderIdsRef.current.add(o.id));
               }
             }
-            setOrders(ordData);
+            setOrders(ordArray);
           }
         } catch {
           // ignore
@@ -650,7 +743,10 @@ export default function RestaurantDashboard() {
           const reqRes = await fetch(`/api/service-requests?restaurantId=${restData.id}`);
           if (reqRes.ok) {
             const reqData: ServiceRequest[] = await reqRes.json();
-            const pendingReqs = reqData.filter((r) => r.status === "pending");
+            const reqArray = Array.isArray(reqData) ? reqData : [];
+            const pendingReqs = reqArray.filter((r) => r.status === "pending");
+            const reqFp = reqArray.map((r) => `${r.id}_${r.status}`).join("|");
+            lastDashboardReqsFpRef.current = reqFp;
 
             if (!isInitialReqsLoadedRef.current) {
               pendingReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
@@ -667,7 +763,7 @@ export default function RestaurantDashboard() {
                 brandNewReqs.forEach((r) => knownRequestIdsRef.current.add(r.id));
               }
             }
-            setServiceRequests(reqData);
+            setServiceRequests(reqArray);
           }
         } catch {
           // ignore
@@ -688,6 +784,7 @@ export default function RestaurantDashboard() {
       }
     } catch {
       if (restaurantSlug === "grand-spice" || isDemoMode) {
+        restaurantRef.current = DEMO_RESTAURANT;
         setRestaurant(DEMO_RESTAURANT);
       }
     } finally {
@@ -697,18 +794,18 @@ export default function RestaurantDashboard() {
 
   useEffect(() => {
     if (!authUser) return;
-    loadDashboardData();
+    loadDashboardData(true);
 
     // Smart Polling: Pause when browser tab is hidden/minimized to save bandwidth and DB queries
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
-      loadDashboardData();
-    }, 4000);
+      loadDashboardData(false);
+    }, 5000);
 
     // Instant refresh when user returns to tab
     const handleVisibilityChange = () => {
       if (typeof document !== "undefined" && !document.hidden) {
-        loadDashboardData();
+        loadDashboardData(false);
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
