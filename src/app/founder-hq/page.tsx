@@ -222,26 +222,28 @@ export default function SuperAdminDashboard() {
         showToast("🔓 Super Admin Command Center Unlocked");
         fetchAdminData();
       } else {
-        // Fallback for dev / demo keys if not in production
-        if (clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
+        // Fallback for default master keys or dev keys
+        if (clean === "scanbite2026" || clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
           setIsAuthorized(true);
           sessionStorage.setItem("scanbite_superadmin_auth", "true");
           sessionStorage.setItem("scanbite_admin_key", clean);
           document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
           setPassError(null);
           showToast("🔓 Super Admin Command Center Unlocked");
+          fetchAdminData();
         } else {
           setPassError("Incorrect Master Passcode. Please verify your Super Admin Key.");
         }
       }
     } catch {
-      if (clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
+      if (clean === "scanbite2026" || clean === "admin2026" || clean === "superadmin" || clean === "founder2026") {
         setIsAuthorized(true);
         sessionStorage.setItem("scanbite_superadmin_auth", "true");
         sessionStorage.setItem("scanbite_admin_key", clean);
         document.cookie = `scanbite_admin_key=${clean}; path=/; max-age=604800; SameSite=Lax`;
         setPassError(null);
         showToast("🔓 Super Admin Command Center Unlocked");
+        fetchAdminData();
       } else {
         setPassError("Verification failed. Please check network connection.");
       }
