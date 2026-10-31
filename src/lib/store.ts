@@ -38,13 +38,241 @@ export const getRestaurantBySlug = async (slug: string): Promise<Restaurant | nu
   return null;
 };
 
+export const seedDemoOrdersInDb = async (): Promise<boolean> => {
+  try {
+    // 1. Ensure cat-5 and item-14 exist in DB so foreign key constraints are satisfied
+    let cat5 = await prisma.category.findUnique({ where: { id: "cat-5" } });
+    if (!cat5) {
+      await prisma.category.create({
+        data: {
+          id: "cat-5",
+          restaurantId: "rest-001",
+          name: "Desserts & Sweets",
+          icon: "🍨",
+          sortOrder: 5,
+        },
+      });
+    }
+
+    let it14 = await prisma.menuItem.findUnique({ where: { id: "item-14" } });
+    if (!it14) {
+      await prisma.menuItem.create({
+        data: {
+          id: "item-14",
+          restaurantId: "rest-001",
+          categoryId: "cat-5",
+          name: "Sizzling Brownie with Ice Cream",
+          description: "Warm walnut fudge brownie served on a hot sizzler plate with vanilla bean ice cream and hot chocolate fudge.",
+          price: 210,
+          isVeg: true,
+          isAvailable: true,
+          isBestseller: true,
+          spiceLevel: 0,
+          prepTimeMinutes: 8,
+          stockCount: 25,
+          lowStockThreshold: 5,
+          imageUrl: "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=500&auto=format&fit=crop&q=80",
+        },
+      });
+    }
+
+    const demoOrders = [
+      {
+        id: "ord-101",
+        restaurantId: "rest-001",
+        tableId: "tbl-4",
+        tableNumber: "Table 4",
+        customerName: "Rahul Sharma",
+        customerPhone: "9876543210",
+        subtotal: 690,
+        tax: 35,
+        discount: 0,
+        total: 725,
+        status: "cooking",
+        paymentMethod: "counter_cash",
+        paymentStatus: "unpaid",
+        createdAt: new Date(Date.now() - 4 * 60000),
+        items: [
+          { menuItemId: "item-1", name: "Paneer Tikka Angara", price: 280, quantity: 1, isVeg: true, notes: "Extra spicy please", orderedByName: "Rahul" },
+          { menuItemId: "item-7", name: "Old Delhi Butter Chicken", price: 410, quantity: 1, isVeg: false, orderedByName: "Aakash" },
+        ],
+      },
+      {
+        id: "ord-102",
+        restaurantId: "rest-001",
+        tableId: "tbl-2",
+        tableNumber: "Table 2",
+        customerName: "Priya Patel",
+        customerPhone: "9812345678",
+        subtotal: 580,
+        tax: 29,
+        discount: 50,
+        couponCode: "SAVE50",
+        total: 559,
+        status: "pending",
+        paymentMethod: "counter_cash",
+        paymentStatus: "unpaid",
+        createdAt: new Date(Date.now() - 18 * 60000),
+        items: [
+          { menuItemId: "item-5", name: "Dal Makhani Grand Special", price: 290, quantity: 1, isVeg: true },
+          { menuItemId: "item-9", name: "Butter Garlic Naan", price: 75, quantity: 2, isVeg: true },
+          { menuItemId: "item-14", name: "Sizzling Brownie with Ice Cream", price: 210, quantity: 1, isVeg: true },
+        ],
+      },
+      {
+        id: "ord-103",
+        restaurantId: "rest-001",
+        tableId: "tbl-1",
+        tableNumber: "Table 1",
+        customerName: "Rohan Verma",
+        customerPhone: "9823456789",
+        subtotal: 300,
+        tax: 15,
+        discount: 0,
+        total: 315,
+        status: "ready",
+        paymentMethod: "upi_online",
+        paymentStatus: "paid",
+        createdAt: new Date(Date.now() - 14 * 60000),
+        items: [
+          { menuItemId: "item-12", name: "Virgin Mint Mojito", price: 150, quantity: 2, isVeg: true },
+        ],
+      },
+      {
+        id: "ord-104",
+        restaurantId: "rest-001",
+        tableId: "tbl-6",
+        tableNumber: "Patio 1",
+        customerName: "Sameer Khan",
+        customerPhone: "9899887766",
+        subtotal: 550,
+        tax: 28,
+        discount: 0,
+        total: 578,
+        status: "served",
+        paymentMethod: "counter_cash",
+        paymentStatus: "paid",
+        rating: 5,
+        reviewFeedback: "The Kolkata Mutton Dum Biryani was phenomenal! Super aromatic and succulent meat.",
+        createdAt: new Date(Date.now() - 25 * 60000),
+        items: [
+          { menuItemId: "item-11", name: "Kolkata Mutton Dum Biryani", price: 460, quantity: 1, isVeg: false },
+          { menuItemId: "item-13", name: "Masala Chaas (Spiced Buttermilk)", price: 90, quantity: 1, isVeg: true },
+        ],
+      },
+      {
+        id: "ord-105",
+        restaurantId: "rest-001",
+        tableId: "tbl-3",
+        tableNumber: "Table 3",
+        customerName: "Ananya Deshmukh",
+        customerPhone: "9833445566",
+        subtotal: 650,
+        tax: 32,
+        discount: 0,
+        total: 682,
+        status: "completed",
+        paymentMethod: "upi_online",
+        paymentStatus: "paid",
+        rating: 5,
+        reviewFeedback: "Amazing hospitality and the Dal Makhani Grand Special was rich and creamy. Fast QR ordering!",
+        createdAt: new Date(Date.now() - 45 * 60000),
+        items: [
+          { menuItemId: "item-5", name: "Dal Makhani Grand Special", price: 290, quantity: 1, isVeg: true },
+          { menuItemId: "item-9", name: "Butter Garlic Naan", price: 75, quantity: 2, isVeg: true },
+          { menuItemId: "item-14", name: "Sizzling Brownie with Ice Cream", price: 210, quantity: 1, isVeg: true },
+        ],
+      },
+      {
+        id: "ord-106",
+        restaurantId: "rest-001",
+        tableId: "tbl-5",
+        tableNumber: "Table 5",
+        customerName: "Vikram Malhotra",
+        customerPhone: "9877001122",
+        subtotal: 420,
+        tax: 21,
+        discount: 0,
+        total: 441,
+        status: "completed",
+        paymentMethod: "counter_cash",
+        paymentStatus: "paid",
+        rating: 4,
+        reviewFeedback: "Crispy paneer tikka and chilled virgin mojito. Loved the vibe!",
+        createdAt: new Date(Date.now() - 75 * 60000),
+        items: [
+          { menuItemId: "item-1", name: "Paneer Tikka Angara", price: 280, quantity: 1, isVeg: true },
+          { menuItemId: "item-12", name: "Virgin Mint Mojito", price: 150, quantity: 1, isVeg: true },
+        ],
+      },
+    ];
+
+    for (const o of demoOrders) {
+      await prisma.order.upsert({
+        where: { id: o.id },
+        create: {
+          id: o.id,
+          restaurantId: o.restaurantId,
+          tableId: o.tableId,
+          tableNumber: o.tableNumber,
+          customerName: o.customerName,
+          customerPhone: o.customerPhone,
+          subtotal: o.subtotal,
+          tax: o.tax,
+          discount: o.discount,
+          couponCode: o.couponCode,
+          total: o.total,
+          status: o.status,
+          paymentMethod: o.paymentMethod,
+          paymentStatus: o.paymentStatus,
+          rating: o.rating,
+          reviewFeedback: o.reviewFeedback,
+          createdAt: o.createdAt,
+          items: {
+            create: o.items.map((it: any) => ({
+              menuItemId: it.menuItemId,
+              name: it.name,
+              price: it.price,
+              quantity: it.quantity,
+              isVeg: it.isVeg,
+              notes: it.notes || null,
+              orderedByName: it.orderedByName || null,
+            })),
+          },
+        },
+        update: {
+          status: o.status,
+          paymentStatus: o.paymentStatus,
+          tableId: o.tableId,
+          tableNumber: o.tableNumber,
+        },
+      });
+    }
+    return true;
+  } catch (err) {
+    console.error("seedDemoOrdersInDb error:", err);
+    return false;
+  }
+};
+
 export const getOrdersForRestaurant = async (restaurantId: string): Promise<Order[]> => {
   try {
-    const orders = await prisma.order.findMany({
+    let orders = await prisma.order.findMany({
       where: { restaurantId },
       include: { items: true },
       orderBy: { createdAt: "desc" },
     });
+
+    // If demo restaurant has 0 orders in PostgreSQL, auto-seed them so status transitions persist seamlessly
+    if ((!orders || orders.length === 0) && (restaurantId === "rest-001" || restaurantId === "grand-spice")) {
+      await seedDemoOrdersInDb();
+      orders = await prisma.order.findMany({
+        where: { restaurantId: "rest-001" },
+        include: { items: true },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
     if (orders && orders.length > 0) {
       const formatted = orders.map((o) => ({
         ...o,

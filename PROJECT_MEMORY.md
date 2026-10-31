@@ -182,6 +182,15 @@
     - **Quick Actions on Table Cards:** `🧹 Vacate Table`, `🧾 Bill/KOT` (thermal print slip modal), `🔀 Shift Table`, `📱 Test QR Link`, `✏️ Edit Table`, `🗑️ Delete Table`.
     - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 21 routes) with 0 TypeScript/Next.js compilation errors.
 
+16. **Live Kitchen (KDS) Full Audit & Serverless Cloud DB Synchronization (Verified Oct 31, 2026):**
+    - **Serverless Lambda State Desynchronization Resolved:** Previously, demo orders for `grand-spice` (`rest-001`) existed only in memory on isolated Vercel serverless containers. When a user advanced a ticket (e.g. `ord-102` to "Start Cooking 👨‍🍳"), the status update succeeded on that specific container, but subsequent 4s polling hits arrived on fresh/different lambda containers that had no database records and read from initial static memory, reverting the order back to "pending".
+    - **Neon PostgreSQL Persistence for Demo & Real Orders:** Added `seedDemoOrdersInDb()` in `src/lib/store.ts`. Added missing `cat-5` (Desserts & Sweets) and `item-14` (Sizzling Brownie with Ice Cream) to satisfy foreign key relations. Now all demo orders (`ord-101` through `ord-106`) are seeded directly into Neon PostgreSQL table `Order` and `OrderItem`. Status updates (`cooking`, `ready`, `served`, `completed`, `cancelled`) and payment status toggles (`paid`/`unpaid`) now execute `prisma.order.update` directly against Neon PostgreSQL, guaranteeing 100% cross-lambda synchronization with zero status reversion.
+    - **Fresh Seeding on "Reset Demo Tickets":** `POST /api/orders` with `action: "reset_demo_orders"` now cleans stale orders and re-seeds fresh active demo orders directly into Neon PostgreSQL with real-time timestamps.
+    - **Multi-Tenant Demo Safety:** Confirmed strict separation: demo orders strictly carry `restaurantId: "rest-001"`, completely isolated from real restaurants and the public marketing page `/`.
+    - **KDS Instant Search Upgrade:** Enhanced search filter in `filteredOrders` to match diner phone numbers (`matchesPhone`) and group ordering diner names (`matchesDiner`) in addition to table number, order ID, dish name, and guest name.
+    - **Time Calculation & Delay Alert Hardening:** Hardened `minutesAgo` calculation against `NaN` values from timezone discrepancies or client date formatting, ensuring persistent, accurate delayed order warnings (>15m amber warning, >20m red pulsing alert).
+    - **Zero-Regression Verification:** 100% compilation on `npm run build` (21/21 routes passed with 0 errors).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

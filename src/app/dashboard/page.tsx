@@ -1471,8 +1471,10 @@ export default function RestaurantDashboard() {
         const matchesTable = o.tableNumber.toLowerCase().includes(query);
         const matchesId = o.id.toLowerCase().includes(query);
         const matchesCustomer = (o.customerName || "").toLowerCase().includes(query);
+        const matchesPhone = (o.customerPhone || "").toLowerCase().includes(query);
         const matchesDish = o.items.some((it) => it.name.toLowerCase().includes(query));
-        return matchesTable || matchesId || matchesCustomer || matchesDish;
+        const matchesDiner = o.items.some((it) => (it.orderedByName || "").toLowerCase().includes(query));
+        return matchesTable || matchesId || matchesCustomer || matchesPhone || matchesDish || matchesDiner;
       }
       return true;
     });
@@ -2698,7 +2700,8 @@ export default function RestaurantDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredOrders.map((order) => {
-                  const minutesAgo = Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 60000);
+                  const orderTime = order.createdAt ? new Date(order.createdAt).getTime() : Date.now();
+                  const minutesAgo = Math.max(0, Math.floor((Date.now() - (isNaN(orderTime) ? Date.now() : orderTime)) / 60000));
                   const isCookingOrPending = order.status === "pending" || order.status === "cooking";
                   const isDelayed = isCookingOrPending && minutesAgo >= 15;
                   const isSevereDelay = isCookingOrPending && minutesAgo >= 20;

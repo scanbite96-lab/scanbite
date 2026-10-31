@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus, vacateTable } from "@/lib/store";
+import { getOrdersForRestaurant, getTableOrders, createOrder, updateOrderStatus, vacateTable, seedDemoOrdersInDb } from "@/lib/store";
 import { prisma } from "@/lib/prisma";
 import { getSessionUser, isSuperAdminRequest, checkRateLimit, getClientIp } from "@/lib/auth";
 import { DEMO_RESTAURANT, resetDemoOrders } from "@/lib/demoData";
@@ -46,11 +46,13 @@ export async function POST(request: NextRequest) {
         await prisma.order.deleteMany({
           where: { restaurantId: "rest-001" },
         });
-      } catch {
-        // ignore
+        await seedDemoOrdersInDb();
+      } catch (seedErr) {
+        console.error("Reset demo orders error in DB:", seedErr);
       }
       const reset = resetDemoOrders();
-      return NextResponse.json({ success: true, orders: reset });
+      const freshOrders = await getOrdersForRestaurant("rest-001");
+      return NextResponse.json({ success: true, orders: freshOrders.length > 0 ? freshOrders : reset });
     }
 
     const { 
@@ -254,7 +256,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Missing orderId or update fields" }, { status: 400 });
     }
 
-    const isDemoOrder = String(orderId).startsWith("ord-") || String(orderId).startsWith("cmv");
+    const isDemoOrder = String(orderId).startsWith("ord-");
 
     // Only staff, owner, or superadmin can update orders
     if (!session && !isSuperAdmin && !isDemoOrder) {
