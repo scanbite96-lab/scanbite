@@ -248,7 +248,13 @@ export default function CustomerTableMenu() {
     setDinerName(val);
     setTempDinerName(val);
     if (typeof window !== "undefined") {
-      try { localStorage.setItem("scanbite_diner_name", val); } catch {}
+      try {
+        if (val.trim()) {
+          localStorage.setItem("scanbite_diner_name", val.trim());
+        } else {
+          localStorage.removeItem("scanbite_diner_name");
+        }
+      } catch {}
     }
   };
 
@@ -875,6 +881,16 @@ export default function CustomerTableMenu() {
       if (typeof window !== "undefined") {
         localStorage.removeItem(`scanbite_cart_${slug}_${tableParam}`);
       }
+      if (restaurant && currentTable) {
+        fetch("/api/cart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "clear_cart",
+            tableId: currentTable.id,
+          }),
+        }).catch(() => {});
+      }
       setIsCartOpen(false);
       fetchOrders();
       setIsOrdersOpen(true);
@@ -967,6 +983,19 @@ export default function CustomerTableMenu() {
     return counts;
   }, [restaurant]);
 
+  // Only display categories that actually contain menu items (and deduplicate by name)
+  const visibleCategories = useMemo(() => {
+    if (!restaurant?.categories) return [];
+    const seenNames = new Set<string>();
+    return restaurant.categories.filter((cat) => {
+      const count = categoryCounts[cat.id] || 0;
+      const nameKey = cat.name.trim().toLowerCase();
+      if (count === 0 || seenNames.has(nameKey)) return false;
+      seenNames.add(nameKey);
+      return true;
+    });
+  }, [restaurant?.categories, categoryCounts]);
+
   // Recommended Add-ons (Dishes not in cart, e.g. Desserts & Drinks)
   const recommendedAddons = useMemo(() => {
     if (!restaurant) return [];
@@ -990,14 +1019,49 @@ export default function CustomerTableMenu() {
       if (dietaryFilter === "veg" && !item.isVeg) return false;
       if (dietaryFilter === "non_veg" && item.isVeg) return false;
 
-      // Smart Search filter
+      // Smart Search filter (supports English + Hindi transliteration)
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const catName = catMap.get(item.categoryId) || "";
         const matchesName = item.name.toLowerCase().includes(q);
         const matchesDesc = item.description?.toLowerCase().includes(q) ?? false;
         const matchesCat = catName.includes(q);
-        return matchesName || matchesDesc || matchesCat;
+        if (matchesName || matchesDesc || matchesCat) return true;
+
+        // Common Hindi food synonyms
+        const hindiMap: Record<string, string[]> = {
+          "पनीर": ["paneer"],
+          "बिरयानी": ["biryani"],
+          "चिकन": ["chicken", "murgh", "tikka"],
+          "मटन": ["mutton", "gosht", "lamb"],
+          "दाल": ["dal", "daal", "makhani"],
+          "रोटी": ["roti", "naan", "bread", "kulcha"],
+          "नान": ["naan"],
+          "पिज्जा": ["pizza"],
+          "पिज़्ज़ा": ["pizza"],
+          "शेक": ["shake"],
+          "मोहितो": ["mojito", "cooler", "mocktail"],
+          "मछली": ["fish"],
+          "फिश": ["fish"],
+          "स्वीट": ["sweet", "dessert", "brownie", "rasmalai"],
+          "मीठा": ["sweet", "dessert", "brownie", "rasmalai"],
+          "चावल": ["rice", "biryani"],
+          "छाछ": ["chaas", "buttermilk"],
+        };
+
+        for (const [hindiWord, englishTerms] of Object.entries(hindiMap)) {
+          if (q.includes(hindiWord)) {
+            const matchesHindiSynonym = englishTerms.some(
+              (term) =>
+                item.name.toLowerCase().includes(term) ||
+                (item.description && item.description.toLowerCase().includes(term)) ||
+                catName.includes(term)
+            );
+            if (matchesHindiSynonym) return true;
+          }
+        }
+
+        return false;
       }
       return true;
     });
@@ -1296,6 +1360,9 @@ export default function CustomerTableMenu() {
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id="dish-search-input"
+                name="searchQuery"
+                aria-label={t.searchPlaceholder}
                 type="text"
                 placeholder={t.searchPlaceholder}
                 value={searchQuery}
@@ -1371,7 +1438,7 @@ export default function CustomerTableMenu() {
             <span>{t.allItems}</span>
             <span className="text-[10px] opacity-75 font-normal">({categoryCounts.all || 0})</span>
           </button>
-          {restaurant.categories.map((cat) => (
+          {visibleCategories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
@@ -1702,6 +1769,9 @@ export default function CustomerTableMenu() {
 
                       {/* Special notes per item */}
                       <input
+                        id={`cooking-note-shared-${it.id}`}
+                        name={`note_${it.id}`}
+                        aria-label={t.cookingNotePlaceholder}
                         type="text"
                         placeholder={t.cookingNotePlaceholder}
                         value={it.notes || ""}
@@ -1773,6 +1843,9 @@ export default function CustomerTableMenu() {
 
                     {/* Special notes per item */}
                     <input
+                      id={`cooking-note-local-${cartKey}`}
+                      name={`note_${cartKey}`}
+                      aria-label={t.cookingNotePlaceholder}
                       type="text"
                       placeholder={t.cookingNotePlaceholder}
                       value={notes}
@@ -1831,6 +1904,9 @@ export default function CustomerTableMenu() {
                   <div className="relative flex-1">
                     <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
+                      id="coupon-code-input"
+                      name="couponCode"
+                      aria-label={t.couponPlaceholder}
                       type="text"
                       placeholder={t.couponPlaceholder}
                       value={couponInput}
@@ -1887,6 +1963,9 @@ export default function CustomerTableMenu() {
                 <p className="text-xs font-bold text-slate-700">{t.dinerDetails}</p>
                 <div className="grid grid-cols-2 gap-2">
                   <input
+                    id="customer-name-input"
+                    name="customerName"
+                    aria-label={t.yourName}
                     type="text"
                     placeholder={t.yourName}
                     value={customerName}
@@ -1894,6 +1973,9 @@ export default function CustomerTableMenu() {
                     className="bg-slate-50 text-base sm:text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
                   />
                   <input
+                    id="customer-phone-input"
+                    name="customerPhone"
+                    aria-label={t.phoneForBill}
                     type="tel"
                     placeholder={t.phoneForBill}
                     value={customerPhone}
@@ -2553,6 +2635,9 @@ export default function CustomerTableMenu() {
               {t.enterNamePrompt}
             </p>
             <input
+              id="diner-name-modal-input"
+              name="tempDinerName"
+              aria-label={lang === "hi" ? "टेबल पर आपका नाम" : "Your Name at Table"}
               type="text"
               placeholder={lang === "hi" ? "जैसे: आकाश, राहुल, प्रिया" : "e.g. Aakash, Rahul, Priya"}
               value={tempDinerName}

@@ -2,15 +2,15 @@ const { spawn } = require("child_process");
 const path = require("path");
 
 function startServer() {
-  console.log(`[ScanBite Supervisor] Starting Next.js dev server on http://0.0.0.0:3000 at ${new Date().toISOString()}`);
+  console.log(`[ScanBite Supervisor] Starting Next.js production server on http://0.0.0.0:3000 at ${new Date().toISOString()}`);
   
   const child = spawn(
     process.execPath,
-    [path.join(__dirname, "node_modules", "next", "dist", "bin", "next"), "dev", "-H", "0.0.0.0", "-p", "3000"],
+    [path.join(__dirname, "node_modules", "next", "dist", "bin", "next"), "start", "-H", "0.0.0.0", "-p", "3000"],
     {
       stdio: ["ignore", "inherit", "inherit"],
       cwd: __dirname,
-      env: { ...process.env, PORT: "3000", HOSTNAME: "0.0.0.0" },
+      env: { ...process.env, PORT: "3000", HOSTNAME: "0.0.0.0", NODE_ENV: "production" },
     }
   );
 

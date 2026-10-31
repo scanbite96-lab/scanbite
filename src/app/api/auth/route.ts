@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { AuthUser } from "@/types";
 import { signToken, verifyToken, AUTH_COOKIE_NAME, isSuperAdminRequest } from "@/lib/auth";
+import { DEMO_STAFF } from "@/lib/demoData";
 
 // GET /api/auth -> Get current logged-in user profile
 export async function GET(request: NextRequest) {
@@ -36,6 +37,37 @@ export async function GET(request: NextRequest) {
 
     if (!restaurant) {
       if (session.slug === "grand-spice") {
+        let staffPermissions = {
+          canManageOrders: true,
+          canManageMenu: true,
+          canManageBilling: true,
+          canManageRequests: true,
+        };
+        let staffName = session.staffName || "Rajesh Sharma";
+        let staffRole = session.staffRole;
+
+        if (session.role === "staff" && session.staffId) {
+          const demoStaff = DEMO_STAFF.find((s) => s.id === session.staffId);
+          if (demoStaff) {
+            if (!demoStaff.isActive) {
+              const res = NextResponse.json({ 
+                authenticated: false, 
+                error: `Account for ${demoStaff.name} has been deactivated by the restaurant owner.` 
+              });
+              res.cookies.delete(AUTH_COOKIE_NAME);
+              return res;
+            }
+            staffName = demoStaff.name;
+            staffRole = demoStaff.role;
+            staffPermissions = {
+              canManageOrders: demoStaff.canManageOrders,
+              canManageMenu: demoStaff.canManageMenu,
+              canManageBilling: demoStaff.canManageBilling,
+              canManageRequests: demoStaff.canManageRequests,
+            };
+          }
+        }
+
         return NextResponse.json({
           authenticated: true,
           user: {
@@ -43,10 +75,13 @@ export async function GET(request: NextRequest) {
             name: "The Grand Spice Kitchen",
             slug: "grand-spice",
             ownerEmail: "owner@grandspice.com",
-            ownerName: "Rajesh Sharma",
+            ownerName: session.role === "staff" ? staffName : "Rajesh Sharma",
             role: session.role || "owner",
             staffPin: "1234",
-            permissions: {
+            staffId: session.staffId,
+            staffName: session.role === "staff" ? staffName : undefined,
+            staffRole: session.role === "staff" ? staffRole : undefined,
+            permissions: session.role === "staff" ? staffPermissions : {
               canManageOrders: true,
               canManageMenu: true,
               canManageBilling: true,
@@ -64,15 +99,29 @@ export async function GET(request: NextRequest) {
     let staffName = session.staffName || restaurant.ownerName;
     let staffRole = session.staffRole;
 
-    // If session is staff and tied to a specific staffId, verify active status in DB
+    // If session is staff and tied to a specific staffId, verify active status in DB or DEMO_STAFF
     if (session.role === "staff" && session.staffId) {
-      const dbStaff = await prisma.staff.findUnique({
-        where: { id: session.staffId },
-      });
+      let dbStaff: any = null;
+      try {
+        dbStaff = await prisma.staff.findUnique({
+          where: { id: session.staffId },
+        });
+      } catch (err) {
+        console.warn("Prisma staff lookup error in GET /api/auth:", err);
+      }
+
+      // Check DEMO_STAFF fallback if not found in DB
+      if (!dbStaff && (session.slug === "grand-spice" || session.staffId.startsWith("st-") || restaurant.slug === "grand-spice" || restaurant.id === "rest-001")) {
+        const demoStaff = DEMO_STAFF.find((s) => s.id === session.staffId);
+        if (demoStaff) {
+          dbStaff = demoStaff;
+        }
+      }
+
       if (!dbStaff || !dbStaff.isActive) {
         const res = NextResponse.json({ 
           authenticated: false, 
-          error: "Your staff account has been deactivated by the restaurant owner." 
+          error: dbStaff ? `Account for ${dbStaff.name} has been deactivated by the restaurant owner.` : "Your staff account has been deactivated by the restaurant owner." 
         });
         res.cookies.delete(AUTH_COOKIE_NAME);
         return res;
@@ -102,12 +151,12 @@ export async function GET(request: NextRequest) {
         name: restaurant.name,
         slug: restaurant.slug,
         ownerEmail: restaurant.ownerEmail,
-        ownerName: restaurant.ownerName,
+        ownerName: session.role === "staff" ? (staffName || restaurant.ownerName) : restaurant.ownerName,
         role: session.role || "owner",
         staffPin: restaurant.staffPin || "1234",
         staffId: session.staffId,
-        staffName,
-        staffRole,
+        staffName: session.role === "staff" ? staffName : undefined,
+        staffRole: session.role === "staff" ? staffRole : undefined,
         permissions: staffPermissions,
       },
     });
@@ -258,17 +307,19 @@ export async function POST(request: NextRequest) {
       const cleanSlug = String(slug).trim().toLowerCase();
       const cleanPin = String(pin).trim();
 
-      let restaurant = null;
+      let restaurant: any = null;
       try {
         restaurant = await prisma.restaurant.findUnique({
           where: { slug: cleanSlug },
         });
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("Prisma restaurant lookup error in pin_login:", err);
       }
 
+      const isDemoRestaurant = cleanSlug === "grand-spice" || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001";
+
       if (!restaurant) {
-        if (cleanSlug === "grand-spice") {
+        if (isDemoRestaurant) {
           restaurant = {
             id: "rest-001",
             name: "The Grand Spice Kitchen",
@@ -276,19 +327,44 @@ export async function POST(request: NextRequest) {
             ownerEmail: "owner@grandspice.com",
             ownerName: "Rajesh Sharma",
             staffPin: "1234",
-          } as any;
+          };
         } else {
           return NextResponse.json({ error: "Restaurant not found." }, { status: 404 });
         }
       }
 
-      // Check if there is an individual staff member registered with this PIN
-      const specificStaff = await prisma.staff.findFirst({
-        where: {
-          restaurantId: restaurant.id,
-          pin: cleanPin,
-        },
-      });
+      // Check if there is an individual staff member registered with this PIN in DB (resilient try/catch)
+      let specificStaff: any = null;
+      try {
+        specificStaff = await prisma.staff.findFirst({
+          where: {
+            restaurantId: restaurant.id,
+            pin: cleanPin,
+          },
+        });
+      } catch (err) {
+        console.warn("Prisma staff lookup error in pin_login:", err);
+      }
+
+      // If DB returned no match (or DB failed) and this is the demo restaurant, check DEMO_STAFF
+      if (!specificStaff && isDemoRestaurant) {
+        const demoStaffMatch = DEMO_STAFF.find((s) => s.pin === cleanPin);
+        if (demoStaffMatch) {
+          specificStaff = {
+            id: demoStaffMatch.id,
+            restaurantId: restaurant.id,
+            name: demoStaffMatch.name,
+            role: demoStaffMatch.role,
+            pin: demoStaffMatch.pin,
+            phone: demoStaffMatch.phone,
+            isActive: demoStaffMatch.isActive,
+            canManageOrders: demoStaffMatch.canManageOrders,
+            canManageMenu: demoStaffMatch.canManageMenu,
+            canManageBilling: demoStaffMatch.canManageBilling,
+            canManageRequests: demoStaffMatch.canManageRequests,
+          };
+        }
+      }
 
       let user: AuthUser;
 
@@ -346,9 +422,13 @@ export async function POST(request: NextRequest) {
       }
 
       const token = signToken(user);
+      const displayName = user.staffName || specificStaff?.name || "Staff Member";
+      const displayRole = user.staffRole || specificStaff?.role;
       const response = NextResponse.json({
         success: true,
-        message: specificStaff ? `Welcome, ${specificStaff.name} (${specificStaff.role.toUpperCase()})!` : "Staff PIN verified successfully.",
+        message: displayRole
+          ? `Welcome, ${displayName} (${String(displayRole).toUpperCase()})!`
+          : "Staff PIN verified successfully.",
         user,
       });
 

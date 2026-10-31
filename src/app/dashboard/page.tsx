@@ -319,7 +319,11 @@ export default function RestaurantDashboard() {
             if (data.user.role === "owner") {
               setActiveTab("analytics");
             } else {
-              if (!data.user.permissions?.canManageOrders && data.user.permissions?.canManageMenu) {
+              if (data.user.permissions?.canManageOrders) {
+                setActiveTab("kds");
+              } else if (data.user.permissions?.canManageRequests || data.user.permissions?.canManageBilling) {
+                setActiveTab("tables");
+              } else if (data.user.permissions?.canManageMenu) {
                 setActiveTab("menu");
               } else {
                 setActiveTab("kds");
@@ -336,15 +340,18 @@ export default function RestaurantDashboard() {
     checkAuthSession();
   }, []);
 
-  // Staff Guard: Staff can only access tabs granted by the Owner (KDS and/or Menu)
+  // Staff Guard: Staff can only access tabs granted by the Owner (KDS, Menu, and/or Floor Tables)
   useEffect(() => {
     if (isStaff) {
-      const allowedTabs: ("kds" | "menu")[] = [];
-      if (canManageOrders || canManageBilling || canManageRequests) {
+      const allowedTabs: ("kds" | "menu" | "tables")[] = [];
+      if (canManageOrders || canManageBilling) {
         allowedTabs.push("kds");
       }
       if (canManageMenu) {
         allowedTabs.push("menu");
+      }
+      if (canManageRequests || canManageBilling) {
+        allowedTabs.push("tables");
       }
       if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab as any)) {
         setActiveTab(allowedTabs[0]);
@@ -410,7 +417,11 @@ export default function RestaurantDashboard() {
       if (res.ok && data.success) {
         setAuthUser(data.user);
         setRestaurantSlug(data.user.slug);
-        if (!data.user.permissions?.canManageOrders && data.user.permissions?.canManageMenu) {
+        if (data.user.permissions?.canManageOrders) {
+          setActiveTab("kds");
+        } else if (data.user.permissions?.canManageRequests || data.user.permissions?.canManageBilling) {
+          setActiveTab("tables");
+        } else if (data.user.permissions?.canManageMenu) {
           setActiveTab("menu");
         } else {
           setActiveTab("kds");
@@ -865,7 +876,7 @@ export default function RestaurantDashboard() {
 
   // Vacate and reset table for next guests
   const handleVacateTable = async (tableId: string, tableNumber: string) => {
-    if (!canManageOrders) {
+    if (!canManageOrders && !canManageRequests && !canManageBilling) {
       showToast("Unauthorized: You do not have permission to manage tables.", "error");
       return;
     }
@@ -949,7 +960,7 @@ export default function RestaurantDashboard() {
 
   // Attend service request
   const handleAttendRequest = async (requestId: string) => {
-    if (!canManageRequests) {
+    if (!canManageRequests && !canManageBilling) {
       showToast("Unauthorized: You do not have permission to attend dining table service requests.", "error");
       return;
     }
@@ -2329,6 +2340,24 @@ export default function RestaurantDashboard() {
                         <span>Menu &amp; Stock</span>
                       </button>
                     )}
+                    {(canManageRequests || canManageBilling) && (
+                      <button
+                        onClick={() => setActiveTab("tables")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
+                          activeTab === "tables"
+                            ? "bg-orange-500 text-white shadow-sm"
+                            : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>Floor Tables</span>
+                        {pendingRequests.length > 0 && (
+                          <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ml-0.5 animate-pulse">
+                            {pendingRequests.length}
+                          </span>
+                        )}
+                      </button>
+                    )}
                   </nav>
 
                   <div className="bg-amber-950/60 border border-amber-500/40 text-amber-300 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs whitespace-nowrap">
@@ -3298,8 +3327,8 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR (OWNER ONLY) ===================== */}
-        {isOwner && activeTab === "tables" && (
+        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR ===================== */}
+        {(isOwner || canManageRequests || canManageBilling) && activeTab === "tables" && (
           <div className="space-y-6">
             {/* Action Bar */}
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
@@ -3311,12 +3340,14 @@ export default function RestaurantDashboard() {
               </div>
 
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsAddTableOpen(true)}
-                  className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
-                >
-                  <Plus className="w-4 h-4" /> Add Table
-                </button>
+                {isOwner && (
+                  <button
+                    onClick={() => setIsAddTableOpen(true)}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" /> Add Table
+                  </button>
+                )}
 
                 <button
                   onClick={() => window.print()}
@@ -3404,6 +3435,45 @@ export default function RestaurantDashboard() {
                       )}
                     </div>
 
+                    {/* Live Table Service Calls for this Table */}
+                    {(() => {
+                      const tableServiceReqs = serviceRequests.filter((r) => {
+                        const matches = (
+                          r.tableId === table.id ||
+                          r.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
+                          (cleanNum && r.tableNumber.toLowerCase().includes(cleanNum))
+                        );
+                        return matches && r.status === "pending";
+                      });
+                      if (tableServiceReqs.length === 0) return null;
+                      return (
+                        <div className="no-print my-1.5 w-full space-y-1">
+                          {tableServiceReqs.map((req) => (
+                            <div
+                              key={req.id}
+                              className="bg-amber-100 border border-amber-300 text-amber-950 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-pulse"
+                            >
+                              <span className="flex items-center gap-1">
+                                {req.type === "water" ? "💧 Needs Water" :
+                                 req.type === "bill" ? "🧾 Bill Requested" :
+                                 req.type === "cleaning" ? "🧹 Clean Table" :
+                                 "🛎️ Called Waiter"}
+                              </span>
+                              {(canManageRequests || canManageBilling) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAttendRequest(req.id)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs cursor-pointer"
+                                >
+                                  Clear ✓
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
                     {/* QR Code Container */}
                     <div className="my-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center">
                       {qrImage ? (
@@ -3456,23 +3526,27 @@ export default function RestaurantDashboard() {
                           </a>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditTable(table)}
-                          className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
-                          title={`Edit ${table.tableNumber}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        {isOwner && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditTable(table)}
+                              className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
+                              title={`Edit ${table.tableNumber}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTable(table.id, table.tableNumber)}
-                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
-                          title={`Delete ${table.tableNumber}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTable(table.id, table.tableNumber)}
+                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                              title={`Delete ${table.tableNumber}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3614,9 +3688,9 @@ export default function RestaurantDashboard() {
                       <tr>
                         <th className="py-3 px-4">Staff Member</th>
                         <th className="py-3 px-4">Role</th>
-                        <th className="py-3 px-4">Online Status (इनेबल/डिसेबल)</th>
+                        <th className="py-3 px-4">Online Status (लॉगिन स्थिति)</th>
                         <th className="py-3 px-4">Quick PIN</th>
-                        <th className="py-3 px-4">Delegated Rights (हाथ में क्या-क्या है)</th>
+                        <th className="py-3 px-4">Delegated Rights (कार्य अधिकार एवं अनुमतियाँ)</th>
                         <th className="py-3 px-4 text-right">Actions</th>
                       </tr>
                     </thead>
@@ -3683,8 +3757,8 @@ export default function RestaurantDashboard() {
                                   onClick={() => handleToggleStaffPermission(st.id, "canManageOrders", st.canManageOrders)}
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
                                     st.canManageOrders
-                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60"
                                   }`}
                                   title="Click to toggle Orders / Kitchen KDS permission"
                                 >
@@ -3696,8 +3770,8 @@ export default function RestaurantDashboard() {
                                   onClick={() => handleToggleStaffPermission(st.id, "canManageMenu", st.canManageMenu)}
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
                                     st.canManageMenu
-                                      ? "bg-amber-50 text-amber-800 border-amber-300"
-                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                      ? "bg-amber-50 text-amber-800 border-amber-300 shadow-xs"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60"
                                   }`}
                                   title="Click to toggle Menu & Stock Portions permission"
                                 >
@@ -3709,8 +3783,8 @@ export default function RestaurantDashboard() {
                                   onClick={() => handleToggleStaffPermission(st.id, "canManageBilling", st.canManageBilling)}
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
                                     st.canManageBilling
-                                      ? "bg-sky-50 text-sky-800 border-sky-300"
-                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                      ? "bg-sky-50 text-sky-800 border-sky-300 shadow-xs"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60"
                                   }`}
                                   title="Click to toggle Billing & Payment Clearance permission"
                                 >
@@ -3722,8 +3796,8 @@ export default function RestaurantDashboard() {
                                   onClick={() => handleToggleStaffPermission(st.id, "canManageRequests", st.canManageRequests)}
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
                                     st.canManageRequests
-                                      ? "bg-purple-50 text-purple-800 border-purple-300"
-                                      : "bg-slate-100 text-slate-400 border-slate-200 line-through"
+                                      ? "bg-purple-50 text-purple-800 border-purple-300 shadow-xs"
+                                      : "bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60"
                                   }`}
                                   title="Click to toggle Table Calls & Requests permission"
                                 >
@@ -5218,7 +5292,7 @@ export default function RestaurantDashboard() {
               {/* Granular Responsibilities Delegation */}
               <div className="pt-2">
                 <label className="block font-bold text-slate-800 mb-1.5">
-                  Delegated Responsibilities (&ldquo;हाथ में क्या-क्या देना है&rdquo;)
+                  Delegated Responsibilities (कार्य अधिकार)
                 </label>
                 <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
                   <label className="flex items-center justify-between cursor-pointer">
@@ -5455,7 +5529,7 @@ export default function RestaurantDashboard() {
                 <div>
                   <div className="font-bold text-slate-900 flex items-center gap-1.5">
                     <UserCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Staff Online Login Access (इनेबल ऑनलाइन)</span>
+                    <span>Staff Online Login Access (लॉगिन स्थिति)</span>
                   </div>
                   <div className="text-[11px] text-slate-500">When disabled, this staff member cannot log in with their PIN.</div>
                 </div>
@@ -5467,10 +5541,10 @@ export default function RestaurantDashboard() {
                 />
               </div>
 
-              {/* Granular Permissions (हाथ में क्या-क्या देना है) */}
+              {/* Granular Permissions (कार्य अधिकार) */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1.5">
-                  Granular Delegated Rights (स्टाफ़ के हाथ में क्या-क्या देना है):
+                  Delegated Responsibilities (कार्य अधिकार)
                 </label>
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
                   <label className="flex items-center justify-between cursor-pointer">

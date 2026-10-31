@@ -70,11 +70,17 @@ export async function POST(req: NextRequest) {
           status: "new",
         },
       });
-      return NextResponse.json({ success: true, message: "Inquiry received and saved to database", inquiry: created });
+      return NextResponse.json(
+        { success: true, message: "Inquiry received and saved to database", inquiry: created },
+        { status: 201 }
+      );
     } catch (dbError) {
       console.warn("DB save failed, falling back to memory/file:", dbError);
       const fallbackRecord = saveFileOrMemoryInquiry(body);
-      return NextResponse.json({ success: true, message: "Inquiry received (cached)", inquiry: fallbackRecord });
+      return NextResponse.json(
+        { success: true, message: "Inquiry received (cached)", inquiry: fallbackRecord },
+        { status: 201 }
+      );
     }
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to process inquiry" }, { status: 500 });
