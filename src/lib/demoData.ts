@@ -740,7 +740,9 @@ export function addDemoOrder(order: Order): Order {
 export function updateDemoOrderStatus(
   orderId: string,
   status?: Order["status"],
-  paymentStatus?: Order["paymentStatus"]
+  paymentStatus?: Order["paymentStatus"],
+  tableId?: string,
+  tableNumber?: string
 ): Order | null {
   const idx = demoOrdersStore.findIndex((o) => o.id === orderId);
   if (idx === -1) return null;
@@ -748,6 +750,8 @@ export function updateDemoOrderStatus(
     ...demoOrdersStore[idx],
     ...(status ? { status } : {}),
     ...(paymentStatus ? { paymentStatus } : {}),
+    ...(tableId ? { tableId } : {}),
+    ...(tableNumber ? { tableNumber } : {}),
     updatedAt: new Date().toISOString(),
   };
   demoOrdersStore[idx] = updated;

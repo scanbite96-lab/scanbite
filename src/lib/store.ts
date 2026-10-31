@@ -354,12 +354,16 @@ export const createOrder = async (orderData: Omit<Order, "id" | "createdAt" | "u
 export const updateOrderStatus = async (
   orderId: string,
   status?: Order["status"],
-  paymentStatus?: Order["paymentStatus"]
+  paymentStatus?: Order["paymentStatus"],
+  tableId?: string,
+  tableNumber?: string
 ): Promise<Order | null> => {
   try {
     const updateData: Record<string, string> = {};
     if (status) updateData.status = status;
     if (paymentStatus) updateData.paymentStatus = paymentStatus;
+    if (tableId) updateData.tableId = tableId;
+    if (tableNumber) updateData.tableNumber = tableNumber;
 
     const updated = await prisma.order.update({
       where: { id: orderId },
@@ -368,7 +372,7 @@ export const updateOrderStatus = async (
     });
 
     // Also sync in-memory demo store if applicable
-    updateDemoOrderStatus(orderId, status, paymentStatus);
+    updateDemoOrderStatus(orderId, status, paymentStatus, tableId, tableNumber);
 
     return {
       ...updated,

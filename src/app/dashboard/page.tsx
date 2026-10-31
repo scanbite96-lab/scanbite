@@ -61,7 +61,9 @@ import {
   UserCheck,
   UserX,
   BadgeCheck,
-  Pencil
+  Pencil,
+  ArrowRightLeft,
+  LayoutGrid
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
@@ -177,6 +179,14 @@ export default function RestaurantDashboard() {
   const [editStaffRequests, setEditStaffRequests] = useState(true);
   const [isSavingEditStaff, setIsSavingEditStaff] = useState(false);
   const [editStaffError, setEditStaffError] = useState<string | null>(null);
+
+  // Floor Plan Grid State [P-07]
+  const [tablesViewMode, setTablesViewMode] = useState<"floor" | "cards">("floor");
+  const [tablesFilter, setTablesFilter] = useState<"all" | "vacant" | "dining" | "bill" | "alert">("all");
+  const [tablesSearchQuery, setTablesSearchQuery] = useState("");
+  const [shiftingTable, setShiftingTable] = useState<{ fromTableId: string; fromTableNumber: string; orderId: string } | null>(null);
+  const [selectedShiftTargetId, setSelectedShiftTargetId] = useState("");
+  const [isShiftingOrder, setIsShiftingOrder] = useState(false);
 
   // Add Table Modal State
   const [isAddTableOpen, setIsAddTableOpen] = useState(false);
@@ -898,6 +908,39 @@ export default function RestaurantDashboard() {
       }
     } catch {
       showToast("Network error vacating table.", "error");
+    }
+  };
+
+  // Shift / Transfer Order from Table A to Table B [P-07]
+  const handleConfirmShiftTable = async () => {
+    if (!shiftingTable || !selectedShiftTargetId) return;
+    const targetTable = restaurant?.tables.find((t) => t.id === selectedShiftTargetId);
+    if (!targetTable) return;
+
+    setIsShiftingOrder(true);
+    try {
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: shiftingTable.orderId,
+          tableId: targetTable.id,
+          tableNumber: targetTable.tableNumber,
+        }),
+      });
+
+      if (res.ok) {
+        showToast(`Order shifted from ${shiftingTable.fromTableNumber} to ${targetTable.tableNumber}! 🔀`, "success");
+        setShiftingTable(null);
+        setSelectedShiftTargetId("");
+        loadDashboardData();
+      } else {
+        showToast("Failed to shift table order.", "error");
+      }
+    } catch {
+      showToast("Network error shifting table order.", "error");
+    } finally {
+      setIsShiftingOrder(false);
     }
   };
 
@@ -3336,44 +3379,88 @@ export default function RestaurantDashboard() {
           </div>
         )}
 
-        {/* ===================== TAB 4: TABLE & QR CODE GENERATOR ===================== */}
+        {/* ===================== TAB 4: INTERACTIVE FLOOR PLAN & TABLE QR STANDS [P-07] ===================== */}
         {(isOwner || canManageRequests || canManageBilling) && activeTab === "tables" && (
           <div className="space-y-6">
-            {/* Action Bar */}
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Table QR Stands & Generator</h2>
+            {/* Top Navigation & View Mode Toggle */}
+            <div className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
+                    <LayoutGrid className="w-4 h-4" />
+                  </div>
+                  <h2 className="text-base font-extrabold text-slate-900">Interactive Floor Plan & Tables</h2>
+                </div>
                 <p className="text-xs text-slate-500">
-                  Download or print high-resolution QR tent cards for your restaurant tables.
+                  Real-time occupancy status, table order tracking, service alerts & tent cards.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* View Mode Toggle */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setTablesViewMode("floor")}
+                    className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                      tablesViewMode === "floor"
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5 text-orange-600" />
+                    <span>Live Floor Grid (फ्लोर प्लान)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTablesViewMode("cards")}
+                    className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
+                      tablesViewMode === "cards"
+                        ? "bg-white text-slate-900 shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <QrCode className="w-3.5 h-3.5 text-slate-600" />
+                    <span>QR Tent Cards (प्रिंट स्टैंड)</span>
+                  </button>
+                </div>
+
                 {isOwner && (
                   <button
                     onClick={() => setIsAddTableOpen(true)}
-                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95"
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition active:scale-95 shadow-sm shadow-orange-600/20"
                   >
                     <Plus className="w-4 h-4" /> Add Table
                   </button>
                 )}
 
-                <button
-                  onClick={() => window.print()}
-                  className="bg-slate-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow transition active:scale-95"
-                >
-                  <Printer className="w-4 h-4" /> Print All Tent Cards
-                </button>
+                {tablesViewMode === "cards" && (
+                  <button
+                    onClick={() => window.print()}
+                    className="bg-slate-900 hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow transition active:scale-95"
+                  >
+                    <Printer className="w-4 h-4" /> Print All Tent Cards
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Tables Grid */}
-            <div id="printable-qr-grid" className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 ${selectedKotOrder ? "no-print" : ""}`}>
-              {restaurant.tables.map((table) => {
-                const qrImage = tableQRs[table.id];
-                const dinerUrl = `/r/${restaurant.slug}/t/${table.id}`;
+            {(() => {
+              // Compute live metrics across all tables
+              let vacantCount = 0;
+              let diningCount = 0;
+              let billPendingCount = 0;
+              let alertCount = 0;
+              let totalUnpaidAmount = 0;
+              let totalSeats = 0;
 
+              const tableStatusMap = new Map<string, any>();
+
+              restaurant.tables.forEach((table) => {
+                totalSeats += table.seats || 4;
                 const cleanNum = table.tableNumber.replace(/\D/g, "");
+
                 const activeOrders = orders.filter((o) => {
                   const matches = (
                     o.tableId === table.id ||
@@ -3383,185 +3470,675 @@ export default function RestaurantDashboard() {
                   return matches && o.status !== "completed" && o.status !== "cancelled";
                 });
 
+                const serviceReqs = serviceRequests.filter((r) => {
+                  const matches = (
+                    r.tableId === table.id ||
+                    r.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
+                    (cleanNum && r.tableNumber.toLowerCase().includes(cleanNum))
+                  );
+                  return matches && r.status === "pending";
+                });
+
+                const hasAlert = serviceReqs.length > 0;
                 const isOccupied = activeOrders.length > 0;
                 const hasUnpaid = activeOrders.some((o) => o.paymentStatus !== "paid");
                 const isAllServed = isOccupied && activeOrders.every((o) => o.status === "served");
+                const isBillPending = hasUnpaid && (isAllServed || serviceReqs.some((r) => r.type === "bill"));
+                const isDining = isOccupied && !isBillPending;
+                const isVacant = !isOccupied && !hasAlert;
                 const totalActiveAmount = activeOrders.reduce((sum, o) => sum + o.total, 0);
 
-                return (
-                  <div
-                    key={table.id}
-                    className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center text-center relative overflow-hidden group hover:border-orange-500 transition break-inside-avoid"
-                  >
-                    {/* Header */}
-                    <div className="mb-2">
-                      <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded">
-                        {restaurant.name}
-                      </span>
-                      <h3 className="text-xl font-black text-slate-900 mt-1">{table.tableNumber}</h3>
-                      <div className="flex items-center justify-center gap-1.5 mt-1">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                          <Users className="w-3 h-3 text-slate-400" />
-                          {table.seats || 4} Seats
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Scan to View Menu & Order</p>
-                    </div>
+                if (hasAlert) alertCount++;
+                if (isBillPending) billPendingCount++;
+                else if (isDining) diningCount++;
+                else if (isVacant) vacantCount++;
 
-                    {/* Live Table Status Badge & Vacate Action */}
-                    <div className="no-print my-2 flex flex-col items-center gap-1.5 w-full">
-                      {!isOccupied ? (
-                        <span className="text-[11px] font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                          <span>Vacant / Free (साफ़ टेबल)</span>
-                        </span>
-                      ) : (
-                        <div className="w-full flex flex-col items-center gap-1.5">
-                          <span
-                            className={`text-[11px] font-black px-3 py-1 rounded-full border flex items-center gap-1 ${
-                              !hasUnpaid
-                                ? "bg-purple-50 text-purple-800 border-purple-200"
-                                : isAllServed
-                                ? "bg-rose-50 text-rose-800 border-rose-300 animate-pulse"
-                                : "bg-orange-50 text-orange-800 border-orange-200"
-                            }`}
-                          >
-                            {!hasUnpaid
-                              ? "🟣 Bill Paid (Ready to Vacate)"
-                              : isAllServed
-                              ? `🔴 Bill Pending (${restaurant.currencySymbol}${totalActiveAmount})`
-                              : `🟡 Dining (${activeOrders.length} active order)`}
-                          </span>
+                activeOrders.forEach((o) => {
+                  if (o.paymentStatus !== "paid") totalUnpaidAmount += o.total;
+                });
+
+                const firstOrder = activeOrders[0];
+                tableStatusMap.set(table.id, {
+                  activeOrders,
+                  serviceReqs,
+                  hasAlert,
+                  isOccupied,
+                  hasUnpaid,
+                  isAllServed,
+                  isBillPending,
+                  isDining,
+                  isVacant,
+                  totalActiveAmount,
+                  dinerName: firstOrder?.customerName,
+                  earliestOrderTime: firstOrder?.createdAt,
+                });
+              });
+
+              // Filter tables by search query and category pill
+              const filteredTables = restaurant.tables.filter((t) => {
+                const info = tableStatusMap.get(t.id);
+                if (!info) return true;
+
+                // Search query match
+                if (tablesSearchQuery.trim()) {
+                  const q = tablesSearchQuery.trim().toLowerCase();
+                  const matchesNum = t.tableNumber.toLowerCase().includes(q);
+                  const matchesDiner = info.dinerName?.toLowerCase().includes(q);
+                  if (!matchesNum && !matchesDiner) return false;
+                }
+
+                // Status pill filter
+                if (tablesFilter === "vacant") return info.isVacant;
+                if (tablesFilter === "dining") return info.isDining;
+                if (tablesFilter === "bill") return info.isBillPending;
+                if (tablesFilter === "alert") return info.hasAlert;
+                return true;
+              });
+
+              return (
+                <div className="space-y-6">
+                  {/* Floor Plan Mode */}
+                  {tablesViewMode === "floor" && (
+                    <>
+                      {/* Top KPI Metric Cards */}
+                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {/* 1. All Tables */}
+                        <button
+                          type="button"
+                          onClick={() => setTablesFilter("all")}
+                          className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
+                            tablesFilter === "all"
+                              ? "bg-slate-900 border-slate-900 text-white shadow-md"
+                              : "bg-white border-slate-200 text-slate-800 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Total Tables</span>
+                            <span className="text-sm">🏢</span>
+                          </div>
+                          <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black">{restaurant.tables.length}</span>
+                            <span className={`text-[10px] font-semibold ${tablesFilter === "all" ? "text-slate-300" : "text-slate-500"}`}>
+                              ({totalSeats} Seats)
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* 2. Vacant Tables */}
+                        <button
+                          type="button"
+                          onClick={() => setTablesFilter("vacant")}
+                          className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
+                            tablesFilter === "vacant"
+                              ? "bg-emerald-600 border-emerald-600 text-white shadow-md"
+                              : "bg-emerald-50/60 border-emerald-200 text-emerald-900 hover:border-emerald-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider opacity-90">Vacant (खाली)</span>
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                          </div>
+                          <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black">{vacantCount}</span>
+                            <span className="text-[10px] font-semibold opacity-80">Ready for walk-ins</span>
+                          </div>
+                        </button>
+
+                        {/* 3. Dining / Cooking */}
+                        <button
+                          type="button"
+                          onClick={() => setTablesFilter("dining")}
+                          className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
+                            tablesFilter === "dining"
+                              ? "bg-rose-600 border-rose-600 text-white shadow-md"
+                              : "bg-rose-50/60 border-rose-200 text-rose-900 hover:border-rose-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider opacity-90">Dining (व्यस्त)</span>
+                            <span className="text-sm">👨‍🍳</span>
+                          </div>
+                          <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black">{diningCount}</span>
+                            <span className="text-[10px] font-semibold opacity-80">Orders in progress</span>
+                          </div>
+                        </button>
+
+                        {/* 4. Bill Pending */}
+                        <button
+                          type="button"
+                          onClick={() => setTablesFilter("bill")}
+                          className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between ${
+                            tablesFilter === "bill"
+                              ? "bg-amber-600 border-amber-600 text-white shadow-md"
+                              : "bg-amber-50/60 border-amber-200 text-amber-900 hover:border-amber-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider opacity-90">Bill Pending (बिल)</span>
+                            <span className="text-sm">🧾</span>
+                          </div>
+                          <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black">{billPendingCount}</span>
+                            <span className="text-[10px] font-semibold opacity-80">{restaurant.currencySymbol}{totalUnpaidAmount}</span>
+                          </div>
+                        </button>
+
+                        {/* 5. Service Alerts */}
+                        <button
+                          type="button"
+                          onClick={() => setTablesFilter("alert")}
+                          className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between col-span-2 sm:col-span-1 ${
+                            tablesFilter === "alert"
+                              ? "bg-sky-600 border-sky-600 text-white shadow-md"
+                              : alertCount > 0
+                              ? "bg-sky-50 border-sky-300 text-sky-900 ring-2 ring-sky-300 animate-pulse"
+                              : "bg-sky-50/40 border-sky-200 text-sky-900 hover:border-sky-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider opacity-90">Alerts (सहायता)</span>
+                            <span className="text-sm">🛎️</span>
+                          </div>
+                          <div className="mt-2 flex items-baseline gap-1.5">
+                            <span className="text-2xl font-black">{alertCount}</span>
+                            <span className="text-[10px] font-semibold opacity-80">{alertCount > 0 ? "Calls pending" : "No active calls"}</span>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Filter Pills & Live Search Bar */}
+                      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleVacateTable(table.id, table.tableNumber)}
-                            className="w-full py-1.5 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
-                            title="Vacate and reset table for next guest"
+                            onClick={() => setTablesFilter("all")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                              tablesFilter === "all" ? "bg-slate-900 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
                           >
-                            <span>🧹 Vacate Table (टेबल खाली करें)</span>
+                            All Tables ({restaurant.tables.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTablesFilter("vacant")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                              tablesFilter === "vacant" ? "bg-emerald-600 text-white shadow-xs" : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span>Vacant ({vacantCount})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTablesFilter("dining")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                              tablesFilter === "dining" ? "bg-rose-600 text-white shadow-xs" : "bg-rose-50 text-rose-800 hover:bg-rose-100"
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-rose-500" />
+                            <span>Dining ({diningCount})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTablesFilter("bill")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                              tablesFilter === "bill" ? "bg-amber-600 text-white shadow-xs" : "bg-amber-50 text-amber-800 hover:bg-amber-100"
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-amber-500" />
+                            <span>Bill Pending ({billPendingCount})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTablesFilter("alert")}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 ${
+                              tablesFilter === "alert" ? "bg-sky-600 text-white shadow-xs" : "bg-sky-50 text-sky-800 hover:bg-sky-100"
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-sky-500" />
+                            <span>Service Calls ({alertCount})</span>
+                          </button>
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="relative min-w-[200px]">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Search Table # or Diner..."
+                            value={tablesSearchQuery}
+                            onChange={(e) => setTablesSearchQuery(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 pl-8 pr-3 py-1.5 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-orange-500 font-medium"
+                          />
+                          {tablesSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setTablesSearchQuery("")}
+                              className="text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Floor Plan Cards Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                        {filteredTables.map((table) => {
+                          const info = tableStatusMap.get(table.id);
+                          const dinerUrl = `/r/${restaurant.slug}/t/${table.id}`;
+
+                          let cardBorder = "border-slate-200 bg-white";
+                          let statusLabel = "🟢 Vacant / Free (खाली)";
+                          let statusBadge = "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+                          if (info.hasAlert) {
+                            cardBorder = "border-sky-400 bg-gradient-to-b from-sky-50/60 to-white ring-2 ring-sky-300/60 shadow-md";
+                            statusLabel = "🔵 Service Alert (सहायता)";
+                            statusBadge = "bg-sky-100 text-sky-900 border-sky-300 animate-pulse";
+                          } else if (info.isBillPending) {
+                            cardBorder = "border-amber-400 bg-gradient-to-b from-amber-50/60 to-white ring-2 ring-amber-300/60 shadow-md";
+                            statusLabel = `🟡 Bill Pending (${restaurant.currencySymbol}${info.totalActiveAmount})`;
+                            statusBadge = "bg-amber-100 text-amber-900 border-amber-300";
+                          } else if (info.isDining) {
+                            cardBorder = "border-rose-300 bg-gradient-to-b from-rose-50/40 to-white shadow-sm";
+                            statusLabel = `🔴 Dining (${info.activeOrders.length} order)`;
+                            statusBadge = "bg-rose-50 text-rose-800 border-rose-200";
+                          }
+
+                          return (
+                            <div
+                              key={table.id}
+                              className={`rounded-3xl p-5 border-2 transition-all flex flex-col justify-between ${cardBorder} relative overflow-hidden group hover:shadow-lg`}
+                            >
+                              {/* Top Row: Table Name, Seats, and Status Badge */}
+                              <div>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                                      {table.tableNumber}
+                                    </h3>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                        <Users className="w-3 h-3 text-slate-400" />
+                                        {table.seats || 4} Seats
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border flex items-center gap-1 ${statusBadge}`}>
+                                      {statusLabel}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Active Service Alerts for Table */}
+                                {info.serviceReqs.length > 0 && (
+                                  <div className="mt-3 space-y-1">
+                                    {info.serviceReqs.map((req: any) => (
+                                      <div
+                                        key={req.id}
+                                        className="bg-sky-100 border border-sky-300 text-sky-950 px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-pulse"
+                                      >
+                                        <span className="flex items-center gap-1.5">
+                                          {req.type === "water" ? "💧 Needs Water (पानी)" :
+                                           req.type === "bill" ? "🧾 Bill Requested (बिल)" :
+                                           req.type === "cleaning" ? "🧹 Clean Table (सफ़ाई)" :
+                                           "🛎️ Called Waiter (वेटर)"}
+                                        </span>
+                                        {(canManageRequests || canManageBilling) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAttendRequest(req.id)}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs cursor-pointer transition active:scale-95"
+                                          >
+                                            Clear ✓
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Occupied Table Dining Info */}
+                                {info.isOccupied ? (
+                                  <div className="mt-3.5 p-3 rounded-2xl bg-white/90 border border-slate-100 shadow-xs space-y-2">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="font-bold text-slate-800 flex items-center gap-1 truncate max-w-[140px]">
+                                        <Users className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                                        {info.dinerName || "Dining Guests"}
+                                      </span>
+                                      <span className="font-extrabold text-orange-600 text-sm">
+                                        {restaurant.currencySymbol}{info.totalActiveAmount}
+                                      </span>
+                                    </div>
+
+                                    {/* Order items count & elapsed time */}
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                                      <span>
+                                        {info.activeOrders.reduce((sum: number, o: any) => sum + o.items.length, 0)} Items Ordered
+                                      </span>
+                                      {info.earliestOrderTime && (
+                                        <span className="flex items-center gap-1 text-slate-400">
+                                          <Clock className="w-3 h-3" />
+                                          {Math.max(1, Math.round((Date.now() - new Date(info.earliestOrderTime).getTime()) / 60000))}m ago
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Recent Item Names Peek */}
+                                    <div className="text-[10px] text-slate-600 font-medium truncate pt-1 border-t border-slate-50">
+                                      {info.activeOrders.flatMap((o: any) => o.items.map((it: any) => it.name)).slice(0, 3).join(", ")}
+                                      {info.activeOrders.flatMap((o: any) => o.items).length > 3 ? "..." : ""}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  /* Vacant Table Friendly State */
+                                  <div className="mt-4 p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100/60 flex flex-col items-center justify-center text-center text-xs">
+                                    <span className="text-xl">✨</span>
+                                    <span className="font-bold text-emerald-800 mt-1">Clean & Sanitized</span>
+                                    <span className="text-[11px] text-emerald-600/80 mt-0.5">Ready for next walk-in guests</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Card Action Footer */}
+                              <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
+                                {info.isOccupied ? (
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    {/* Vacate Table */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleVacateTable(table.id, table.tableNumber)}
+                                      className="py-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
+                                      title="Vacate and reset table for next guest"
+                                    >
+                                      <span>🧹 Vacate</span>
+                                    </button>
+
+                                    {/* View KOT / Bill */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedKotOrder(info.activeOrders[0])}
+                                      className="py-1.5 px-2 bg-slate-900 hover:bg-black text-white rounded-xl text-[11px] font-bold shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
+                                      title="Print or view KOT order slip"
+                                    >
+                                      <Receipt className="w-3 h-3 text-orange-400" />
+                                      <span>Bill/KOT</span>
+                                    </button>
+
+                                    {/* Shift Table */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setShiftingTable({ fromTableId: table.id, fromTableNumber: table.tableNumber, orderId: info.activeOrders[0].id })}
+                                      className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition active:scale-95 flex items-center justify-center gap-1"
+                                      title="Transfer this order to another table"
+                                    >
+                                      <ArrowRightLeft className="w-3 h-3 text-slate-500" />
+                                      <span>Shift</span>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between">
+                                    <a
+                                      href={dinerUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs font-bold text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                      <span>Test QR Link</span>
+                                    </a>
+
+                                    <div className="flex items-center gap-1">
+                                      {isOwner && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenEditTable(table)}
+                                            className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
+                                            title={`Edit ${table.tableNumber}`}
+                                          >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteTable(table.id, table.tableNumber)}
+                                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                                            title={`Delete ${table.tableNumber}`}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {filteredTables.length === 0 && (
+                        <div className="bg-white p-12 rounded-3xl border border-slate-200 text-center space-y-3">
+                          <span className="text-3xl">🔍</span>
+                          <h4 className="text-sm font-bold text-slate-900">No tables match your filter</h4>
+                          <p className="text-xs text-slate-400">Try selecting a different filter pill or clear your search query.</p>
+                          <button
+                            type="button"
+                            onClick={() => { setTablesFilter("all"); setTablesSearchQuery(""); }}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl"
+                          >
+                            Show All Tables
                           </button>
                         </div>
                       )}
-                    </div>
+                    </>
+                  )}
 
-                    {/* Live Table Service Calls for this Table */}
-                    {(() => {
-                      const tableServiceReqs = serviceRequests.filter((r) => {
-                        const matches = (
-                          r.tableId === table.id ||
-                          r.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
-                          (cleanNum && r.tableNumber.toLowerCase().includes(cleanNum))
-                        );
-                        return matches && r.status === "pending";
-                      });
-                      if (tableServiceReqs.length === 0) return null;
-                      return (
-                        <div className="no-print my-1.5 w-full space-y-1">
-                          {tableServiceReqs.map((req) => (
-                            <div
-                              key={req.id}
-                              className="bg-amber-100 border border-amber-300 text-amber-950 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-pulse"
-                            >
-                              <span className="flex items-center gap-1">
-                                {req.type === "water" ? "💧 Needs Water" :
-                                 req.type === "bill" ? "🧾 Bill Requested" :
-                                 req.type === "cleaning" ? "🧹 Clean Table" :
-                                 "🛎️ Called Waiter"}
+                  {/* QR Tent Cards Printable View */}
+                  {tablesViewMode === "cards" && (
+                    <div id="printable-qr-grid" className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 ${selectedKotOrder ? "no-print" : ""}`}>
+                      {restaurant.tables.map((table) => {
+                        const qrImage = tableQRs[table.id];
+                        const dinerUrl = `/r/${restaurant.slug}/t/${table.id}`;
+
+                        const cleanNum = table.tableNumber.replace(/\D/g, "");
+                        const activeOrders = orders.filter((o) => {
+                          const matches = (
+                            o.tableId === table.id ||
+                            o.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
+                            (cleanNum && o.tableNumber.toLowerCase().includes(cleanNum))
+                          );
+                          return matches && o.status !== "completed" && o.status !== "cancelled";
+                        });
+
+                        const isOccupied = activeOrders.length > 0;
+                        const hasUnpaid = activeOrders.some((o) => o.paymentStatus !== "paid");
+                        const isAllServed = isOccupied && activeOrders.every((o) => o.status === "served");
+                        const totalActiveAmount = activeOrders.reduce((sum, o) => sum + o.total, 0);
+
+                        return (
+                          <div
+                            key={table.id}
+                            className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center text-center relative overflow-hidden group hover:border-orange-500 transition break-inside-avoid"
+                          >
+                            {/* Header */}
+                            <div className="mb-2">
+                              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded">
+                                {restaurant.name}
                               </span>
-                              {(canManageRequests || canManageBilling) && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleAttendRequest(req.id)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs cursor-pointer"
-                                >
-                                  Clear ✓
-                                </button>
+                              <h3 className="text-xl font-black text-slate-900 mt-1">{table.tableNumber}</h3>
+                              <div className="flex items-center justify-center gap-1.5 mt-1">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                  <Users className="w-3 h-3 text-slate-400" />
+                                  {table.seats || 4} Seats
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5">Scan to View Menu &amp; Order</p>
+                            </div>
+
+                            {/* Live Table Status Badge & Vacate Action */}
+                            <div className="no-print my-2 flex flex-col items-center gap-1.5 w-full">
+                              {!isOccupied ? (
+                                <span className="text-[11px] font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                                  <span>Vacant / Free (साफ़ टेबल)</span>
+                                </span>
+                              ) : (
+                                <div className="w-full flex flex-col items-center gap-1.5">
+                                  <span
+                                    className={`text-[11px] font-black px-3 py-1 rounded-full border flex items-center gap-1 ${
+                                      !hasUnpaid
+                                        ? "bg-purple-50 text-purple-800 border-purple-200"
+                                        : isAllServed
+                                        ? "bg-rose-50 text-rose-800 border-rose-300 animate-pulse"
+                                        : "bg-orange-50 text-orange-800 border-orange-200"
+                                    }`}
+                                  >
+                                    {!hasUnpaid
+                                      ? "🟣 Bill Paid (Ready to Vacate)"
+                                      : isAllServed
+                                      ? `🔴 Bill Pending (${restaurant.currencySymbol}${totalActiveAmount})`
+                                      : `🟡 Dining (${activeOrders.length} active order)`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleVacateTable(table.id, table.tableNumber)}
+                                    className="w-full py-1.5 px-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 flex items-center justify-center gap-1"
+                                    title="Vacate and reset table for next guest"
+                                  >
+                                    <span>🧹 Vacate Table (टेबल खाली करें)</span>
+                                  </button>
+                                </div>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      );
-                    })()}
 
-                    {/* QR Code Container */}
-                    <div className="my-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center">
-                      {qrImage ? (
-                        <img
-                          src={qrImage}
-                          alt={`QR Code for ${table.tableNumber}`}
-                          className="w-44 h-44 object-contain rounded-lg"
-                        />
-                      ) : (
-                        <div className="w-44 h-44 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center text-xs text-slate-400">
-                          Generating QR...
-                        </div>
-                      )}
+                            {/* Live Table Service Calls for this Table */}
+                            {(() => {
+                              const tableServiceReqs = serviceRequests.filter((r) => {
+                                const matches = (
+                                  r.tableId === table.id ||
+                                  r.tableNumber.toLowerCase() === table.tableNumber.toLowerCase() ||
+                                  (cleanNum && r.tableNumber.toLowerCase().includes(cleanNum))
+                                );
+                                return matches && r.status === "pending";
+                              });
+                              if (tableServiceReqs.length === 0) return null;
+                              return (
+                                <div className="no-print my-1.5 w-full space-y-1">
+                                  {tableServiceReqs.map((req) => (
+                                    <div
+                                      key={req.id}
+                                      className="bg-amber-100 border border-amber-300 text-amber-950 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-pulse"
+                                    >
+                                      <span className="flex items-center gap-1">
+                                        {req.type === "water" ? "💧 Needs Water" :
+                                         req.type === "bill" ? "🧾 Bill Requested" :
+                                         req.type === "cleaning" ? "🧹 Clean Table" :
+                                         "🛎️ Called Waiter"}
+                                      </span>
+                                      {(canManageRequests || canManageBilling) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAttendRequest(req.id)}
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-xs cursor-pointer"
+                                        >
+                                          Clear ✓
+                                        </button>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+
+                            {/* QR Code Container */}
+                            <div className="my-4 p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center">
+                              {qrImage ? (
+                                <img
+                                  src={qrImage}
+                                  alt={`QR Code for ${table.tableNumber}`}
+                                  className="w-44 h-44 object-contain rounded-lg"
+                                />
+                              ) : (
+                                <div className="w-44 h-44 bg-slate-100 animate-pulse rounded-lg flex items-center justify-center text-xs text-slate-400">
+                                  Generating QR...
+                                </div>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] font-semibold text-slate-600">
+                              Zero app install • Fast ordering
+                            </p>
+
+                            {/* Action Links */}
+                            <div className="no-print mt-4 pt-3 border-t border-slate-100 w-full flex items-center justify-between text-xs font-bold gap-1">
+                              <a
+                                href={dinerUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-orange-600 hover:text-orange-700 flex items-center gap-1"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" /> Test Link
+                              </a>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSinglePrintTable(table)}
+                                  className="text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 flex items-center gap-1 transition"
+                                  title="Print this single table tent card"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Print</span>
+                                </button>
+
+                                {qrImage && (
+                                  <a
+                                    href={qrImage}
+                                    download={`${table.tableNumber}-QR.png`}
+                                    className="text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 flex items-center gap-1 transition"
+                                    title="Download QR Image PNG"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+
+                                {isOwner && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditTable(table)}
+                                      className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
+                                      title={`Edit ${table.tableNumber}`}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTable(table.id, table.tableNumber)}
+                                      className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                                      title={`Delete ${table.tableNumber}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-
-                    <p className="text-[11px] font-semibold text-slate-600">
-                      Zero app install • Fast ordering
-                    </p>
-
-                    {/* Action Links */}
-                    <div className="no-print mt-4 pt-3 border-t border-slate-100 w-full flex items-center justify-between text-xs font-bold gap-1">
-                      <a
-                        href={dinerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-orange-600 hover:text-orange-700 flex items-center gap-1"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" /> Test Link
-                      </a>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setSinglePrintTable(table)}
-                          className="text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 flex items-center gap-1 transition"
-                          title="Print this single table tent card"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Print</span>
-                        </button>
-
-                        {qrImage && (
-                          <a
-                            href={qrImage}
-                            download={`${table.tableNumber}-QR.png`}
-                            className="text-slate-600 hover:text-slate-900 p-1.5 rounded-lg hover:bg-slate-100 flex items-center gap-1 transition"
-                            title="Download QR Image PNG"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </a>
-                        )}
-
-                        {isOwner && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditTable(table)}
-                              className="text-slate-400 hover:text-orange-600 p-1.5 rounded-lg hover:bg-orange-50 transition"
-                              title={`Edit ${table.tableNumber}`}
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTable(table.id, table.tableNumber)}
-                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
-                              title={`Delete ${table.tableNumber}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -5790,7 +6367,103 @@ export default function RestaurantDashboard() {
         </div>
       )}
 
-      {/* Global Dashboard Toast Feedback */}
+      
+      {/* Table Shift / Transfer Modal [P-07] */}
+      {shiftingTable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-100 flex items-center justify-center text-orange-600">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Shift Table Order</h3>
+                  <p className="text-xs text-slate-500">
+                    Transfer order from <strong className="text-orange-600">{shiftingTable.fromTableNumber}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShiftingTable(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="my-5 space-y-3">
+              <label className="block text-xs font-bold text-slate-700">
+                Select Destination Table (नया टेबल चुनें):
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto p-1">
+                {restaurant?.tables
+                  .filter((t) => t.id !== shiftingTable.fromTableId)
+                  .map((t) => {
+                    const isSelected = selectedShiftTargetId === t.id;
+                    const cleanNum = t.tableNumber.replace(/\D/g, "");
+                    const isOccupied = orders.some((o) => {
+                      const matches = (
+                        o.tableId === t.id ||
+                        o.tableNumber.toLowerCase() === t.tableNumber.toLowerCase() ||
+                        (cleanNum && o.tableNumber.toLowerCase().includes(cleanNum))
+                      );
+                      return matches && o.status !== "completed" && o.status !== "cancelled";
+                    });
+
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setSelectedShiftTargetId(t.id)}
+                        className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition ${
+                          isSelected
+                            ? "bg-orange-50 border-orange-500 ring-2 ring-orange-400/40 text-orange-900"
+                            : isOccupied
+                            ? "bg-slate-50 border-slate-200 text-slate-500"
+                            : "bg-white border-slate-200 hover:border-orange-300 text-slate-800"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-bold text-sm">{t.tableNumber}</span>
+                          <span className="text-[10px] font-semibold text-slate-400">{t.seats || 4} Seats</span>
+                        </div>
+                        <span className={`text-[10px] font-bold mt-1 inline-flex items-center gap-1 ${
+                          isOccupied ? "text-rose-600" : "text-emerald-600"
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isOccupied ? "bg-rose-500" : "bg-emerald-500"}`} />
+                          {isOccupied ? "Occupied" : "Free / Vacant"}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShiftingTable(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!selectedShiftTargetId || isShiftingOrder}
+                onClick={handleConfirmShiftTable}
+                className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/20 disabled:opacity-50 flex items-center gap-1.5 transition active:scale-95"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>{isShiftingOrder ? "Transferring..." : "Confirm Transfer"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+{/* Global Dashboard Toast Feedback */}
       {staffToast && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div

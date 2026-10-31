@@ -248,10 +248,10 @@ export async function PATCH(request: NextRequest) {
     const isSuperAdmin = isSuperAdminRequest(request);
 
     const body = await request.json();
-    const { orderId, status, paymentStatus } = body;
+    const { orderId, status, paymentStatus, tableId, tableNumber } = body;
 
-    if (!orderId || (!status && !paymentStatus)) {
-      return NextResponse.json({ error: "Missing orderId or status/paymentStatus" }, { status: 400 });
+    if (!orderId || (!status && !paymentStatus && !tableId && !tableNumber)) {
+      return NextResponse.json({ error: "Missing orderId or update fields" }, { status: 400 });
     }
 
     const isDemoOrder = String(orderId).startsWith("ord-") || String(orderId).startsWith("cmv");
@@ -308,7 +308,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updated = await updateOrderStatus(orderId, status, paymentStatus);
+    const updated = await updateOrderStatus(orderId, status, paymentStatus, tableId, tableNumber);
     if (!updated) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }

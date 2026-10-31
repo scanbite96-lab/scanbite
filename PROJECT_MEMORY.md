@@ -169,17 +169,24 @@
       - Added a CSS right-side gradient fade mask (`pointer-events-none absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent z-10 lg:hidden`) and `pr-6 lg:pr-0` so users immediately see that more tabs are scrollable.
     - **Verification:** Verified live on Vercel (`scanbite-plum.vercel.app/dashboard?demo=true`) at 1280px, 768px (iPad portrait), and 390px (mobile) via Chrome DevTools MCP. Production build compiled 21/21 routes with 0 errors.
 
+15. **[P-07] Interactive Table Floor Plan & Live Color Grid (Verified Oct 31, 2026):**
+    - **Dual View Mode in Tab 4:** Added a sleek segmented view toggle between **"Live Floor Grid (फ्लोर प्लान)"** and **"QR Tent Cards (प्रिंट स्टैंड)"** preserving full-fidelity printable QR cards while providing an operational real-time table grid.
+    - **4 Live Color-Coded Table States:**
+      - 🟢 **Vacant (खाली / Free):** Table ready and sanitized for new walk-ins or QR scans.
+      - 🔴 **Dining (व्यस्त / In Progress):** Active orders cooking/serving, displaying diner name, elapsed time (`Xm ago`), and items count.
+      - 🟡 **Bill Pending (बिल प्रतीक्षित):** Food served and unpaid balance (`₹X`) with amber alert highlight.
+      - 🔵 **Service Alert (सहायता अलर्ट):** Active calls for Water 💧, Waiter 🛎️, Cleaning 🧹, or Bill with a 1-click `Clear ✓` button.
+    - **Real-time KPI Stats Bar:** Top stats bar tracking Total Tables, Vacant count, Dining count, Bill Pending count & total amount, and Active Service Requests.
+    - **Instant Filter & Search:** Filter pills (`All`, `🟢 Vacant`, `🔴 Dining`, `🟡 Bill Pending`, `🔵 Service Calls`) plus instantaneous table number or diner name search.
+    - **Interactive Table Shift / Transfer (`🔀 Shift Table`):** Staff/Owner can shift an active order from Table A to Table B with database (`PATCH /api/orders`) and demo store synchronization.
+    - **Quick Actions on Table Cards:** `🧹 Vacate Table`, `🧾 Bill/KOT` (thermal print slip modal), `🔀 Shift Table`, `📱 Test QR Link`, `✏️ Edit Table`, `🗑️ Delete Table`.
+    - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 21 routes) with 0 TypeScript/Next.js compilation errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
 
-1. **[P-07] Interactive Table Floor Plan & Live Status Grid:**
-   - **Color-Coded Visual Floor Plan:**
-     - 🟢 **Green (Vacant / खाली):** Table is free and ready for new walk-ins or QR scans.
-     - 🔴 **Red (Occupied & Dining / व्यस्त):** Order is cooking or active dining session in progress.
-     - 🟡 **Yellow (Bill Requested / बिल प्रतीक्षित):** Table has called for the bill; outstanding balance counter alert.
-     - 🔵 **Blue (Service Alert / सहायता अलर्ट):** Active call for Water 💧 or Waiter 🛎️.
-   - **Quick Actions:** 1-click Vacate & Reset Table, Quick Table Transfer / Shift, and Live Table Cart peek.
+1. **[P-07] Interactive Table Floor Plan & Live Status Grid:** ✅ COMPLETED (Oct 31, 2026)
 
 2. **[P-08] Dedicated Mobile Waiter & Captain Mode (`/waiter` or `/dashboard/mobile`):**
    - Ultra-fast mobile layout optimized for staff phones (one-hand operation).
