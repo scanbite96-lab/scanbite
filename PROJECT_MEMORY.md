@@ -208,6 +208,15 @@
     - **Dashboard Quick Integration:** Added 1-tap `📱 Waiter Mode` button in the Owner Dashboard (`/dashboard`) header.
     - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 22 routes) with 0 TypeScript/Next.js compilation errors.
 
+18. **Strict Multi-Tenant Restaurant Header & Tenant API Isolation (Verified Oct 31, 2026):**
+    - **Eliminated Cross-Tenant Selector in Header:** Fixed the critical issue where an owner of a real restaurant (e.g., `royal-biryani-cafe01`) saw a dropdown containing all platform restaurants (`The Grand Spice Kitchen`, `Audit Test Cafe`, and their own). Changed condition from `isOwner && availableRestaurants.length > 1` to strictly `authUser?.role === "admin" && availableRestaurants.length > 1`. Regular owners and floor staff now see ONLY their own restaurant name as a clean title `<h1>{restaurant.name}</h1>` with zero dropdown options.
+    - **Tenant API Isolation (`GET /api/restaurants`):** Added strict session boundary filtering:
+      - Authenticated restaurant owners and staff receive ONLY their own restaurant object.
+      - Public unauthenticated visitors receive ONLY the demo restaurant (`DEMO_RESTAURANT`), preventing exposure of real customer restaurant names across tenants.
+      - Only verified Super Admins (`isSuperAdminRequest`) can query all platform restaurants.
+    - **Staff PIN Modal Hardening:** If a restaurant slug is present in the URL (`/dashboard?slug=...`), staff login modal displays that restaurant name cleanly without rendering a cross-tenant selector.
+    - **Zero-Regression Verification:** 100% compilation on `npm run build` (all 22 routes passed with 0 errors).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

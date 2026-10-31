@@ -51,7 +51,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([DEMO_RESTAURANT]);
     }
 
-    // Strip sensitive passwords & staff pins from public restaurant list
+    const session = getSessionUser(request);
+    const isSuperAdmin = isSuperAdminRequest(request);
+
+    // If caller is an authenticated owner or staff, return ONLY their own restaurant for multi-tenant privacy
+    if (session && session.role !== "admin") {
+      const userRestaurant = restaurants.find(
+        (r) => r.id === session.id || r.slug === session.slug
+      );
+      if (userRestaurant) {
+        const { password, staffPin, ...safe } = userRestaurant as Record<string, unknown>;
+        return NextResponse.json([safe]);
+      }
+      return NextResponse.json([]);
+    }
+
+    // If caller is not a Super Admin, public callers should only receive the demo restaurant
+    if (!isSuperAdmin && (!session || session.role !== "admin")) {
+      const demoOnly = restaurants.filter((r) => r.id === "rest-001" || r.slug === "grand-spice");
+      const listToReturn = demoOnly.length > 0 ? demoOnly : [DEMO_RESTAURANT];
+      const safe = listToReturn.map((r) => {
+        const { password, staffPin, ...s } = r as Record<string, unknown>;
+        return s;
+      });
+      return NextResponse.json(safe);
+    }
+
+    // Strip sensitive passwords & staff pins from superadmin response
     const safeRestaurants = restaurants.map((r) => {
       const { password, staffPin, ...safe } = r as Record<string, unknown>;
       return safe;

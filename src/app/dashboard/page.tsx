@@ -2002,17 +2002,24 @@ export default function RestaurantDashboard() {
                     <Store className="w-3.5 h-3.5 text-orange-400" />
                     <span>Select Restaurant</span>
                   </label>
-                  <select
-                    value={staffRestaurantSlug}
-                    onChange={(e) => setStaffRestaurantSlug(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
-                  >
-                    {availableRestaurants.map((r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.name} ({r.slug})
-                      </option>
-                    ))}
-                  </select>
+                  {availableRestaurants.length > 1 && !restaurantSlug ? (
+                    <select
+                      value={staffRestaurantSlug}
+                      onChange={(e) => setStaffRestaurantSlug(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 focus:border-orange-500 px-3.5 py-2.5 rounded-xl text-white font-medium focus:outline-none"
+                    >
+                      {availableRestaurants.map((r) => (
+                        <option key={r.slug} value={r.slug}>
+                          {r.name} ({r.slug})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="w-full bg-slate-950 border border-slate-700 px-3.5 py-2.5 rounded-xl text-white font-semibold text-xs flex items-center justify-between">
+                      <span>{availableRestaurants.find((r) => r.slug === staffRestaurantSlug)?.name || restaurant?.name || staffRestaurantSlug}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">({staffRestaurantSlug})</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -2155,7 +2162,7 @@ export default function RestaurantDashboard() {
                 </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    {isOwner && availableRestaurants.length > 1 ? (
+                    {authUser?.role === "admin" && availableRestaurants.length > 1 ? (
                       <select
                         value={restaurantSlug}
                         onChange={(e) => setRestaurantSlug(e.target.value)}
@@ -2168,7 +2175,7 @@ export default function RestaurantDashboard() {
                         ))}
                       </select>
                     ) : (
-                      <h1 className="font-bold text-sm sm:text-base text-white tracking-wide truncate max-w-[110px] sm:max-w-[190px] md:max-w-none">{restaurant.name}</h1>
+                      <h1 className="font-bold text-sm sm:text-base text-white tracking-wide truncate max-w-[150px] sm:max-w-[240px] md:max-w-none">{restaurant.name}</h1>
                     )}
 
                     {/* LIVE badge: green dot on xs, pill on sm+ — never overlaps buttons */}
