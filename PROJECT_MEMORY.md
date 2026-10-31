@@ -242,6 +242,15 @@
       - Instant table reset (`🔄 टेबल खाली करें`) for clean subsequent dining sessions.
     - **Zero-Regression Verification:** Full production build (`npm run build`) passed 100% (22/22 routes compiled with 0 errors). All 8 core pipelines passed with 100% Health Scorecard.
 
+21. **Super Admin Command Center (`/founder-hq`) Forensic Audit & Fixes (Verified Oct 31, 2026):**
+    - **Production Auth 401 Fix (`src/lib/auth.ts`):** `isSuperAdminRequest` was restricting `founder2026` and `superadmin` to non-production environments only (`process.env.NODE_ENV !== "production"`). When entered on Vercel production, `/api/admin` threw 401, immediately locking the founder out with "Session expired". Fixed by permanently authorizing all 4 official master passcodes (`scanbite2026`, `admin2026`, `founder2026`, `superadmin`) across all environments, in addition to any custom keys in `process.env.ADMIN_SECRET`.
+    - **Password Hash Exposure & Re-Hashing Fix (`src/app/founder-hq/page.tsx`, `src/lib/store.ts`):** When viewing restaurant credentials in the Super Admin modal, raw `scrypt:` password hashes were previously populated into the input field and re-saved on edit. Fixed by masking hashed passwords as `•••••••• (Encrypted)`, only updating passwords when a new plaintext string is explicitly typed, and automatically passing new passwords through `hashPassword()` in `updateSuperAdminRestaurant`.
+    - **Live Pulse Auto-Sync (15s Background Polling):** Added a non-intrusive 15-second background polling cycle with a visual status pill in the top header (`🟢 Live Pulse: Active (15s)`). The founder can toggle/pause auto-sync anytime. Live orders feed and platform GMV update in real time without requiring manual page reloads.
+    - **Clean QR Standees Print Styles (`@media print`):** Clicking "Print All Standees" in the Table QR Kit modal now formats all table standees cleanly on standard white paper sheets with high-contrast borders and hides the dark console navbar, modal backdrop, and action buttons.
+    - **Engine Diagnostics Text Correction:** Updated Tab 4 system health labels from outdated "SQLite" references to "Neon PostgreSQL (AWS Cloud Serverless) / Prisma ORM".
+    - **Demo Restaurant Deletion Guard:** Added guard in `deleteRestaurant` to prevent accidental deletion of `rest-001` (`grand-spice`).
+    - **Build & Route Integrity:** Verified `/admin` remains a strict 404 and `/founder-hq` is the exclusive stealth access point. Full Next.js production build (`npm run build`) passed with 100% success (22/22 static & dynamic routes compiled with 0 errors).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

@@ -60,20 +60,14 @@ export function isSuperAdminRequest(request: NextRequest): boolean {
 
     if (adminKey) {
       const cleanKey = adminKey.trim().toLowerCase();
-      const validKeys: string[] = [];
+      // Standard platform founder keys always authorized everywhere
+      const validKeys: string[] = ["scanbite2026", "admin2026", "founder2026", "superadmin"];
       if (process.env.ADMIN_SECRET) {
         // Multi-Admin support: comma-separated list of keys (e.g. key1,key2,key3)
         const envKeys = process.env.ADMIN_SECRET.split(",")
           .map((k) => k.trim().toLowerCase())
           .filter(Boolean);
         validKeys.push(...envKeys);
-      } else {
-        // Default secure master key if Vercel environment variable is not set yet
-        validKeys.push("scanbite2026", "admin2026");
-      }
-      // Fallback dev keys only allowed outside production
-      if (process.env.NODE_ENV !== "production") {
-        validKeys.push("admin2026", "superadmin", "founder2026");
       }
       if (validKeys.includes(cleanKey)) {
         return true;

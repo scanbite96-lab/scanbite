@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { Restaurant, Order, ServiceRequest, MenuItem, OrderStatus } from "@/types";
+import { hashPassword, isHashed } from "./auth";
 import {
   DEMO_RESTAURANT,
   getDemoOrders,
@@ -986,7 +987,10 @@ export const updateSuperAdminRestaurant = async (
     if (data.ownerName !== undefined) updatePayload.ownerName = data.ownerName;
     if (data.ownerEmail !== undefined) updatePayload.ownerEmail = data.ownerEmail.trim().toLowerCase();
     if (data.phone !== undefined) updatePayload.phone = data.phone;
-    if (data.password !== undefined && data.password.trim()) updatePayload.password = data.password.trim();
+    if (data.password !== undefined && data.password.trim()) {
+      const cleanPass = data.password.trim();
+      updatePayload.password = isHashed(cleanPass) ? cleanPass : hashPassword(cleanPass);
+    }
     if (data.staffPin !== undefined && data.staffPin.trim()) updatePayload.staffPin = data.staffPin.trim();
 
     if (data.clearExpiry) {
@@ -1013,6 +1017,12 @@ export const updateSuperAdminRestaurant = async (
 
 export const deleteRestaurant = async (restaurantId: string) => {
   try {
+    // Protect core showcase demo restaurant from accidental deletion
+    if (restaurantId === "rest-001" || restaurantId === "grand-spice") {
+      console.warn("Attempt to delete protected demo restaurant prevented.");
+      return false;
+    }
+
     // Safe cascading delete transaction
     await prisma.$transaction([
       prisma.tableCartItem.deleteMany({

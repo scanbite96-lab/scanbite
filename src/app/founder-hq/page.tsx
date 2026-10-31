@@ -169,6 +169,10 @@ export default function SuperAdminDashboard() {
   const [tableQrList, setTableQrList] = useState<TableQrItem[]>([]);
   const [loadingQrKit, setLoadingQrKit] = useState(false);
 
+  // Realtime Live Pulse Sync (15s interval)
+  const [isAutoSync, setIsAutoSync] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
@@ -261,9 +265,9 @@ export default function SuperAdminDashboard() {
     showToast("🔒 Command Center Locked");
   };
 
-  const fetchAdminData = async () => {
+  const fetchAdminData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await fetch("/api/admin", {
         headers: getAdminHeaders(),
       });
@@ -280,7 +284,8 @@ export default function SuperAdminDashboard() {
         setSystemHealth(data.systemHealth || null);
         setCities(data.cities || []);
         setSetting(data.platformSetting || null);
-        if (data.platformSetting) {
+        setLastSyncTime(new Date());
+        if (data.platformSetting && !silent) {
           setBroadcastMessage(data.platformSetting.broadcastMessage || "");
           setSupportPhoneInput(data.platformSetting.supportPhone || "+91 98765 43210");
           setIsMaintenanceInput(Boolean(data.platformSetting.isMaintenance));
@@ -300,15 +305,24 @@ export default function SuperAdminDashboard() {
     } catch (err) {
       console.error("Admin fetch error:", err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     if (isAuthorized) {
-      fetchAdminData();
+      fetchAdminData(false);
     }
   }, [isAuthorized]);
+
+  // Real-time Background Polling for Live Orders & Metrics (Every 15s)
+  useEffect(() => {
+    if (!isAuthorized || !isAutoSync) return;
+    const interval = setInterval(() => {
+      fetchAdminData(true);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isAuthorized, isAutoSync]);
 
   // Filtered & Sorted Restaurants
   const filteredRestaurants = useMemo(() => {
@@ -568,7 +582,8 @@ export default function SuperAdminDashboard() {
     setCredsOwnerName(restaurant.ownerName || "");
     setCredsOwnerEmail(restaurant.ownerEmail || "");
     setCredsPhone(restaurant.phone || "");
-    setCredsPassword(restaurant.password || "admin123");
+    const isPassHashed = Boolean(restaurant.password && restaurant.password.startsWith("scrypt:"));
+    setCredsPassword(isPassHashed ? "" : (restaurant.password || "admin123"));
     setCredsStaffPin(restaurant.staffPin || "1234");
     setShowCredsPassword(false);
     setIsCredsModalOpen(true);
@@ -580,23 +595,29 @@ export default function SuperAdminDashboard() {
     if (!selectedRestForCreds) return;
     setIsSavingCreds(true);
     try {
+      const payload: Record<string, unknown> = {
+        action: "update-restaurant",
+        restaurantId: selectedRestForCreds.id,
+        ownerName: credsOwnerName.trim() || undefined,
+        ownerEmail: credsOwnerEmail.trim() || undefined,
+        phone: credsPhone.trim() || undefined,
+        staffPin: credsStaffPin.trim() || undefined,
+      };
+
+      // Only pass password if founder entered a new non-empty password
+      if (credsPassword.trim() && !credsPassword.trim().startsWith("scrypt:")) {
+        payload.password = credsPassword.trim();
+      }
+
       const res = await fetch("/api/admin", {
         method: "PATCH",
         headers: getAdminHeaders(),
-        body: JSON.stringify({
-          action: "update-restaurant",
-          restaurantId: selectedRestForCreds.id,
-          ownerName: credsOwnerName.trim() || undefined,
-          ownerEmail: credsOwnerEmail.trim() || undefined,
-          phone: credsPhone.trim() || undefined,
-          password: credsPassword.trim() || undefined,
-          staffPin: credsStaffPin.trim() || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         showToast(`🔑 Credentials for ${selectedRestForCreds.name} updated!`);
         setIsCredsModalOpen(false);
-        fetchAdminData();
+        fetchAdminData(false);
       } else {
         showToast("❌ Failed to update credentials");
       }
@@ -1079,9 +1100,24 @@ export default function SuperAdminDashboard() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Realtime 15s Pulse Indicator */}
               <button
-                onClick={fetchAdminData}
+                type="button"
+                onClick={() => setIsAutoSync(!isAutoSync)}
+                className={`px-3 py-2 rounded-2xl border text-xs font-bold transition flex items-center gap-2 ${
+                  isAutoSync
+                    ? "bg-emerald-950/70 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/50"
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                }`}
+                title={isAutoSync ? "Auto-sync is running every 15s. Click to pause." : "Auto-sync is paused. Click to resume."}
+              >
+                <span className={`w-2 h-2 rounded-full ${isAutoSync ? "bg-emerald-400 animate-ping" : "bg-slate-500"}`} />
+                <span>{isAutoSync ? "Live Pulse: Active (15s)" : "Sync Paused"}</span>
+              </button>
+
+              <button
+                onClick={() => fetchAdminData(false)}
                 disabled={loading}
                 className="p-2.5 sm:px-4 sm:py-2.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-2xl border border-slate-700/80 transition flex items-center gap-2 text-xs font-bold active:scale-95 disabled:opacity-50"
                 title="Refresh Live Data"
@@ -1479,7 +1515,7 @@ export default function SuperAdminDashboard() {
                             <div className="flex items-center justify-end gap-1.5">
                               {/* View Live Customer Menu */}
                               <Link
-                                href={`/r/${rest.slug}/t/tbl-1`}
+                                href={`/r/${rest.slug}/t/1`}
                                 target="_blank"
                                 className="p-2 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 text-xs font-bold transition shadow-sm"
                                 title="View Live Customer Table Menu"
@@ -1846,7 +1882,7 @@ export default function SuperAdminDashboard() {
                 <span>Platform System Health & Engine Diagnostics</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Technical infrastructure status, SQLite database connectivity, memory footprint, and server uptime.
+                Technical infrastructure status, Neon PostgreSQL Cloud database connectivity, memory footprint, and server uptime.
               </p>
             </div>
 
@@ -1858,7 +1894,7 @@ export default function SuperAdminDashboard() {
                   <span>{systemHealth?.dbStatus || "Healthy (Connected)"}</span>
                 </div>
                 <div className="text-[10px] text-slate-500 font-mono mt-2">
-                  Engine: SQLite / Prisma ORM
+                  Engine: Neon PostgreSQL (AWS Cloud) / Prisma ORM
                 </div>
               </div>
 
@@ -2436,12 +2472,14 @@ export default function SuperAdminDashboard() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Owner Password
+                  Owner Password {selectedRestForCreds.password?.startsWith("scrypt:") && (
+                    <span className="text-[10px] text-emerald-400 font-normal ml-2">✓ Encrypted (scrypt)</span>
+                  )}
                 </label>
                 <div className="relative">
                   <input
                     type={showCredsPassword ? "text" : "password"}
-                    required
+                    placeholder={selectedRestForCreds.password?.startsWith("scrypt:") ? "•••••••• (Leave blank to keep existing password)" : "Enter password (e.g. admin123)"}
                     value={credsPassword}
                     onChange={(e) => setCredsPassword(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-orange-500 font-mono"
@@ -2454,6 +2492,11 @@ export default function SuperAdminDashboard() {
                     {showCredsPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {selectedRestForCreds.password?.startsWith("scrypt:")
+                    ? "Existing password securely hashed. Enter a new password to overwrite, or leave empty to keep."
+                    : "Default owner login password: admin123"}
+                </p>
               </div>
 
               <div>
@@ -2677,7 +2720,7 @@ export default function SuperAdminDashboard() {
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-800/80 flex items-center justify-between">
+            <div className="p-6 border-b border-slate-800/80 flex items-center justify-between no-print">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-cyan-950/80 text-cyan-400 border border-cyan-500/40 flex items-center justify-center shadow-lg">
                   <QrCode className="w-5 h-5" />
@@ -2710,7 +2753,7 @@ export default function SuperAdminDashboard() {
             </div>
 
             {/* Modal Body: Cards Grid */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div id="printable-qr-kit" className="flex-1 overflow-y-auto p-6 bg-slate-900 print:bg-white print:p-0">
               {loadingQrKit ? (
                 <div className="py-20 text-center text-slate-400">
                   <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-cyan-400" />
@@ -2722,11 +2765,11 @@ export default function SuperAdminDashboard() {
                   <p className="font-bold text-sm">No tables registered for this restaurant.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 print:grid-cols-2 print:gap-6">
                   {tableQrList.map((t) => (
                     <div
                       key={t.id}
-                      className="bg-white text-slate-950 p-5 rounded-2xl border-2 border-slate-200 shadow-xl flex flex-col items-center text-center relative group"
+                      className="print-card bg-white text-slate-950 p-5 rounded-2xl border-2 border-slate-200 shadow-xl flex flex-col items-center text-center relative group"
                     >
                       {/* Standee Branding Header */}
                       <div className="font-black text-xs uppercase tracking-widest text-orange-600 mb-1">
@@ -2756,7 +2799,7 @@ export default function SuperAdminDashboard() {
                       </div>
 
                       {/* Quick Download Button */}
-                      <div className="mt-3 w-full flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                      <div className="mt-3 w-full flex items-center gap-1.5 pt-2 border-t border-slate-100 no-print">
                         <a
                           href={t.qrDataUrl}
                           download={`${selectedRestForQr.slug}_${t.tableNumber.replace(/\s+/g, "_")}.png`}
@@ -2781,7 +2824,7 @@ export default function SuperAdminDashboard() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 no-print">
               <span>Total Standees: <b>{tableQrList.length}</b> tables configured</span>
               <button
                 onClick={() => setIsQrKitModalOpen(false)}
@@ -2791,6 +2834,33 @@ export default function SuperAdminDashboard() {
               </button>
             </div>
           </div>
+          <style jsx global>{`
+            @media print {
+              body {
+                background: white !important;
+                color: black !important;
+              }
+              header, nav, .no-print {
+                display: none !important;
+              }
+              #printable-qr-kit {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                background: white !important;
+                padding: 10px !important;
+                overflow: visible !important;
+                z-index: 99999 !important;
+              }
+              .print-card {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 2px solid #000 !important;
+                margin-bottom: 20px !important;
+              }
+            }
+          `}</style>
         </div>
       )}
     </div>
