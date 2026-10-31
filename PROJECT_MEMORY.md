@@ -19,9 +19,11 @@
 3. **Restaurant Owner & Kitchen Dashboard:** `/dashboard`
    - Default Owner Password: `admin123`
    - Default Staff PIN: `1234`
-4. **Super Admin Command Center:** `/founder-hq`
+4. **Dedicated Mobile Waiter & Captain Portal:** `/waiter`
+   - Demo Captain PIN: `2345` (Amit Waiter) or `1234` (General Staff)
+5. **Super Admin Command Center:** `/founder-hq`
    - Secret URL: `/founder-hq` (Note: `/admin` returns a strict 404 for security)
-5. **Restaurant Self-Onboarding:** `/register`
+6. **Restaurant Self-Onboarding:** `/register`
 
 ---
 
@@ -191,13 +193,30 @@
     - **Time Calculation & Delay Alert Hardening:** Hardened `minutesAgo` calculation against `NaN` values from timezone discrepancies or client date formatting, ensuring persistent, accurate delayed order warnings (>15m amber warning, >20m red pulsing alert).
     - **Zero-Regression Verification:** 100% compilation on `npm run build` (21/21 routes passed with 0 errors).
 
+17. **[P-08] Dedicated Mobile Waiter & Captain Mode (`/waiter`) (Verified Oct 31, 2026):**
+    - **Dedicated Smartphone App (`/waiter`):** One-handed, touch-first mobile interface designed specifically for restaurant captains and floor waiters.
+    - **Fast 4-Digit PIN Authentication:**
+      - Tactile mobile on-screen numpad with animated PIN dots and 1-tap demo shortcut (`Amit Waiter - PIN 2345`).
+      - Remembers shift session in cookie and localStorage.
+    - **Haptic Vibration & Web Audio Buzzer Engine:**
+      - Automatic physical device vibration (`navigator.vibrate([250, 100, 250, 100, 450])`) and synthetic Web Audio chimes whenever a table pings for assistance or the kitchen marks food as "Ready".
+      - Mute/Unmute buzzer toggle button in top bar.
+    - **3-Tab Navigation:**
+      - 🛎️ **Live Alerts:** Urgent table calls (💧 Water, 🛎️ Waiter, 🧾 Bill, 🧹 Cleaning) with 1-tap `✓ Attend` + Kitchen "Ready to Serve" food pickup cards with 1-tap `✓ Delivered`.
+      - 🪑 **Floor Plan:** Live table status grid (🟢 Free, 🔴 Dining, 🟡 Bill Pending, 🔵 Service Alert) with running balance, diner name, and table details drawer.
+      - 📝 **Take Order (POS Mode):** Rapid table order taking at guest tables with category filtering, live dish search, portion sizes (Half/Full) modal, and direct 1-tap `🚀 Send to Kitchen (KOT)`.
+    - **Dashboard Quick Integration:** Added 1-tap `📱 Waiter Mode` button in the Owner Dashboard (`/dashboard`) header.
+    - **Zero-Regression Verification:** Full production build (`npm run build`) compiled 100% of pages (all 22 routes) with 0 TypeScript/Next.js compilation errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
 
 1. **[P-07] Interactive Table Floor Plan & Live Status Grid:** ✅ COMPLETED (Oct 31, 2026)
 
-2. **[P-08] Dedicated Mobile Waiter & Captain Mode (`/waiter` or `/dashboard/mobile`):**
+2. **[P-08] Dedicated Mobile Waiter & Captain Mode (`/waiter`):** ✅ COMPLETED (Oct 31, 2026)
+
+3. **[P-09] Daily Batch Limit & Auto-Sold-Out Live Inventory Counter:**
    - Ultra-fast mobile layout optimized for staff phones (one-hand operation).
    - Instant 4-digit PIN authentication remembering session for the work shift.
    - Live Haptic Vibration + Audio Ding Buzzer when an assigned table requests Water, Waiter, or Bill.

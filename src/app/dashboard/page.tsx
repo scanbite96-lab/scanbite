@@ -63,6 +63,7 @@ import {
   BadgeCheck,
   Pencil,
   ArrowRightLeft,
+  Smartphone,
   LayoutGrid
 } from "lucide-react";
 
@@ -2212,6 +2213,17 @@ export default function RestaurantDashboard() {
                 >
                   {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                 </button>
+
+                {/* Waiter / Captain Mobile Mode Link */}
+                <Link
+                  href="/waiter"
+                  target="_blank"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-xs font-bold text-orange-400 border border-orange-500/30 transition whitespace-nowrap cursor-pointer shadow-sm"
+                  title="Open Dedicated Mobile Waiter & Captain Mode (/waiter)"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-orange-400" />
+                  <span className="hidden sm:inline">Waiter Mode</span>
+                </Link>
 
                 {/* Diner Menu Preview Link — lg+ only so it doesn't crowd tablet */}
                 <a
