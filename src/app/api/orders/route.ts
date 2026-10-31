@@ -69,11 +69,11 @@ export async function POST(request: NextRequest) {
     }
 
     const clientIp = getClientIp(request);
-    // Anti-spam order rate limiting: Max 4 orders per 30 seconds per table + IP
-    const orderLimit = checkRateLimit(`order:${restaurantId}:${tableId}:${clientIp}`, 4, 30);
+    // Anti-spam order rate limiting: Max 3 orders per 60 seconds (1 minute) per table
+    const orderLimit = checkRateLimit(`order:${restaurantId}:${tableId}`, 3, 60);
     if (!orderLimit.allowed) {
       return NextResponse.json(
-        { error: `Order frequency limit reached. Please wait ${orderLimit.retryAfterSeconds} seconds before placing another order.` },
+        { error: `Order frequency limit reached. Only 3 orders allowed per minute per table. Please wait ${orderLimit.retryAfterSeconds}s before placing another order.` },
         { status: 429, headers: { "Retry-After": String(orderLimit.retryAfterSeconds) } }
       );
     }
