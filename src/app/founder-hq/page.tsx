@@ -2698,22 +2698,51 @@ export default function SuperAdminDashboard() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsCredsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingCreds}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/30 transition active:scale-95 disabled:opacity-50"
-                >
-                  {isSavingCreds ? "Saving..." : "Save Credentials"}
-                </button>
-              </div>
+              {/* WhatsApp Share & Actions */}
+              {(() => {
+                const sharePhone = (credsPhone || selectedRestForCreds.phone || "").replace(/\D/g, "").replace(/^0+/, "");
+                const waPhone = sharePhone.startsWith("91") && sharePhone.length === 12
+                  ? sharePhone
+                  : `91${sharePhone.length >= 10 ? sharePhone.slice(-10) : sharePhone}`;
+
+                const currentPasswordHint = credsPassword.trim() ? credsPassword.trim() : "(Your chosen secure password)";
+                const waText = `👋 Namaste ${credsOwnerName || selectedRestForCreds.name} ji!\n\nAapka ScanBite QR Digital Menu Portal ready hai:\n\n🌐 Dashboard Login: https://scanbite-plum.vercel.app/dashboard?slug=${selectedRestForCreds.slug}\n🔑 Password: ${currentPasswordHint}\n🛎️ Staff/Waiter PIN: ${credsStaffPin || "••••"}\n\n📱 Customer QR Menu Link:\nhttps://scanbite-plum.vercel.app/r/${selectedRestForCreds.slug}/t/1\n\n(Note: Aap dashboard me login karke Settings se apna password kabhi bhi badal sakte hain.)\n\nScanBite Platform Support Team`;
+
+                const waShareUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waText)}`;
+
+                return (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                    {sharePhone.length >= 10 ? (
+                      <a
+                        href={waShareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white rounded-xl text-xs font-bold transition shadow-sm"
+                        title="Send login link and credentials directly to owner on WhatsApp"
+                      >
+                        <span>💬 Share via WhatsApp</span>
+                      </a>
+                    ) : <div />}
+
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setIsCredsModalOpen(false)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingCreds}
+                        className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/30 transition active:scale-95 disabled:opacity-50"
+                      >
+                        {isSavingCreds ? "Saving..." : "Save Credentials"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </form>
           </div>
         </div>
