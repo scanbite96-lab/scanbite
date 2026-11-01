@@ -269,10 +269,14 @@ export async function PATCH(request: NextRequest) {
     // Role & restaurant boundary check
     if (session && session.role === "staff") {
       if (status && !session.permissions?.canManageOrders) {
-        return NextResponse.json(
-          { error: "Forbidden: You do not have permission to advance or cancel kitchen orders." },
-          { status: 403 }
-        );
+        // Floor staff / waiters with canManageRequests are permitted to mark ready food as "served"
+        const isDeliveringFood = status === "served" && session.permissions?.canManageRequests;
+        if (!isDeliveringFood) {
+          return NextResponse.json(
+            { error: "Forbidden: You do not have permission to advance or cancel kitchen orders." },
+            { status: 403 }
+          );
+        }
       }
       if (paymentStatus && !session.permissions?.canManageBilling) {
         return NextResponse.json(

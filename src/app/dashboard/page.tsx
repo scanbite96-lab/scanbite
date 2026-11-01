@@ -2320,7 +2320,7 @@ export default function RestaurantDashboard() {
 
                 {/* Waiter / Captain Mobile Mode Link */}
                 <Link
-                  href="/waiter"
+                  href={`/waiter?slug=${restaurant.slug}`}
                   target="_blank"
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 text-xs font-bold text-orange-400 border border-orange-500/30 transition whitespace-nowrap cursor-pointer shadow-sm"
                   title="Open Dedicated Mobile Waiter & Captain Mode (/waiter)"
@@ -2769,7 +2769,7 @@ export default function RestaurantDashboard() {
 
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap pl-2 border-l border-slate-200 shrink-0">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Auto-sync 4s • Chime {soundEnabled ? "ON 🔔" : "MUTED"}</span>
+                  <span>Live Sync (5s) • Chime {soundEnabled ? "ON 🔔" : "MUTED"}</span>
                 </div>
               </div>
             </div>

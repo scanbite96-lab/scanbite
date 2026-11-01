@@ -102,6 +102,7 @@ export default function SuperAdminDashboard() {
   const [inquiriesSearch, setInquiriesSearch] = useState("");
   const [inquiriesStatusFilter, setInquiriesStatusFilter] = useState<string>("all");
   const [isUpdatingInquiry, setIsUpdatingInquiry] = useState<string | null>(null);
+  const [isUpdatingOrder, setIsUpdatingOrder] = useState<string | null>(null);
 
   // Data State
   const [metrics, setMetrics] = useState<SuperAdminMetrics | null>(null);
@@ -356,6 +357,7 @@ export default function SuperAdminDashboard() {
       if (sortBy === "expiry_asc") {
         const dateA = a.planExpiresAt ? new Date(a.planExpiresAt).getTime() : Infinity;
         const dateB = b.planExpiresAt ? new Date(b.planExpiresAt).getTime() : Infinity;
+        if (dateA === Infinity && dateB === Infinity) return 0;
         return dateA - dateB;
       }
       return 0;
@@ -480,6 +482,8 @@ export default function SuperAdminDashboard() {
 
   // 1-Click Impersonate Login
   const handleImpersonate = async (restaurant: AdminRestaurantRow) => {
+    // Open window synchronously to prevent browser popup blockers
+    const win = typeof window !== "undefined" ? window.open("", "_blank") : null;
     try {
       showToast(`🔑 Authorizing Super Admin login for ${restaurant.name}...`);
       const res = await fetch("/api/admin", {
@@ -489,12 +493,42 @@ export default function SuperAdminDashboard() {
       });
       if (res.ok) {
         showToast(`🎉 Access granted! Opening ${restaurant.name} console...`);
-        window.open(`/dashboard?slug=${restaurant.slug}`, "_blank");
+        if (win) {
+          win.location.href = `/dashboard?slug=${restaurant.slug}`;
+        } else {
+          window.location.href = `/dashboard?slug=${restaurant.slug}`;
+        }
       } else {
+        if (win) win.close();
         showToast("❌ Impersonation failed");
       }
     } catch {
+      if (win) win.close();
       showToast("❌ Impersonation error");
+    }
+  };
+
+  // Direct Update Order Status from Super Admin
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      setIsUpdatingOrder(orderId);
+      const res = await fetch("/api/orders", {
+        method: "PATCH",
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ orderId, status: newStatus }),
+      });
+      if (res.ok) {
+        setRecentOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, status: newStatus as any } : o))
+        );
+        showToast(`✅ Order marked as ${newStatus.toUpperCase()}`);
+      } else {
+        showToast("❌ Failed to update order status");
+      }
+    } catch {
+      showToast("❌ Error updating order");
+    } finally {
+      setIsUpdatingOrder(null);
     }
   };
 
@@ -745,6 +779,9 @@ export default function SuperAdminDashboard() {
 
         // Seamlessly move to Restaurants Fleet tab and highlight the new restaurant
         setActiveTab("restaurants");
+        setPlanFilter("all");
+        setStatusFilter("all");
+        setCityFilter("all");
         setSearchTerm(slug);
       } else {
         showToast(`❌ ${data.error || "Slug already exists or invalid data"}`);
@@ -829,12 +866,12 @@ export default function SuperAdminDashboard() {
       r.phone || "N/A",
       r.plan.toUpperCase(),
       r.isActive ? "Active" : "Suspended",
-      r.planExpiresAt ? new Date(r.planExpiresAt).toLocaleDateString() : "Lifetime",
+      r.planExpiresAt ? `"${new Date(r.planExpiresAt).toLocaleDateString()}"` : "Lifetime",
       r.tablesCount,
       r.menuItemsCount,
       r.ordersCount,
       r.gmv,
-      new Date(r.createdAt).toLocaleDateString(),
+      `"${new Date(r.createdAt).toLocaleDateString()}"`,
     ]);
 
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((row) => row.join(","))].join("\r\n");
@@ -889,7 +926,7 @@ export default function SuperAdminDashboard() {
       o.paymentMethod || "Counter Cash",
       o.paymentStatus,
       o.status.toUpperCase(),
-      new Date(o.createdAt).toLocaleString(),
+      `"${new Date(o.createdAt).toLocaleString()}"`,
     ]);
 
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((row) => row.join(","))].join("\r\n");
@@ -1781,9 +1818,25 @@ export default function SuperAdminDashboard() {
 
                         {/* Status */}
                         <td className="py-3.5 px-6 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusBadge(ord.status)}`}>
-                            {ord.status}
-                          </span>
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusBadge(ord.status)}`}>
+                              {ord.status}
+                            </span>
+                            <select
+                              disabled={isUpdatingOrder === ord.id}
+                              value={ord.status}
+                              onChange={(e) => handleUpdateOrderStatus(ord.id, e.target.value)}
+                              className="bg-slate-950 border border-slate-800 text-[10px] text-slate-300 font-bold rounded-lg px-2 py-0.5 focus:outline-none focus:border-orange-500 cursor-pointer disabled:opacity-50"
+                              title="Super Admin Override: Update Order Status"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="cooking">Cooking</option>
+                              <option value="ready">Ready</option>
+                              <option value="served">Served</option>
+                              <option value="completed">Completed</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -2025,7 +2078,7 @@ export default function SuperAdminDashboard() {
                 <div className="text-2xl font-black text-blue-300 mt-2">
                   {inquiries.filter((i) => i.status === "contacted" || i.status === "demo_scheduled").length}
                 </div>
-                <span className="text-[11px] text-slate-500 mt-1 block">Contacted or demo demo scheduled</span>
+                <span className="text-[11px] text-slate-500 mt-1 block">Contacted or demo scheduled</span>
               </div>
 
               <div className="bg-slate-900/90 border border-emerald-900/40 p-5 rounded-3xl">
@@ -2100,8 +2153,10 @@ export default function SuperAdminDashboard() {
                   </div>
                 ) : (
                   filteredInquiries.map((inq) => {
-                    const cleanPhone = (inq.phone || "").replace(/\D/g, "");
-                    const waPhone = cleanPhone.startsWith("91") ? cleanPhone : `91${cleanPhone}`;
+                    const rawDigits = (inq.phone || "").replace(/\D/g, "").replace(/^0+/, "");
+                    const waPhone = rawDigits.startsWith("91") && rawDigits.length === 12
+                      ? rawDigits
+                      : `91${rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits}`;
                     const waMessage = `Hi ${inq.ownerName || "Partner"}! I'm following up from ScanBite regarding your digital QR menu inquiry for "${inq.restaurantName}". Let's get your restaurant set up!`;
                     const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMessage)}`;
 
@@ -2220,6 +2275,9 @@ export default function SuperAdminDashboard() {
                               type="button"
                               onClick={() => {
                                 setActiveTab("restaurants");
+                                setPlanFilter("all");
+                                setStatusFilter("all");
+                                setCityFilter("all");
                                 setSearchTerm(inq.restaurantName);
                                 showToast(`🔍 Showing ${inq.restaurantName} in Fleet`);
                               }}
@@ -2871,7 +2929,7 @@ export default function SuperAdminDashboard() {
                       <div className="mt-3 w-full flex items-center gap-1.5 pt-2 border-t border-slate-100 no-print">
                         <a
                           href={t.qrDataUrl}
-                          download={`${selectedRestForQr.slug}_${t.tableNumber.replace(/\s+/g, "_")}.png`}
+                          download={`${selectedRestForQr.slug}_${t.tableNumber.replace(/[^a-zA-Z0-9_-]/g, "_")}.png`}
                           className="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-bold rounded-lg transition flex items-center justify-center gap-1"
                         >
                           <Download className="w-3 h-3" />

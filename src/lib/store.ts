@@ -806,6 +806,12 @@ export const getSuperAdminOverview = async () => {
       pro: 0,
       enterprise: 0,
     };
+    const activePlanBreakdown = {
+      trial: 0,
+      starter: 0,
+      pro: 0,
+      enterprise: 0,
+    };
 
     const restaurantRows = restaurants.map((r) => {
       const gmv = r.orders
@@ -819,8 +825,10 @@ export const getSuperAdminOverview = async () => {
       const planKey = (r.plan || "starter") as keyof typeof planBreakdown;
       if (planBreakdown[planKey] !== undefined) {
         planBreakdown[planKey]++;
+        if (r.isActive) activePlanBreakdown[planKey]++;
       } else {
         planBreakdown.starter++;
+        if (r.isActive) activePlanBreakdown.starter++;
       }
 
       return {
@@ -844,21 +852,22 @@ export const getSuperAdminOverview = async () => {
       };
     });
 
-    // Calculate Estimated MRR based on plans: Starter ₹999, Pro ₹2,499, Enterprise ₹4,999
+    // Calculate Estimated MRR based on active paying subscriptions (Starter ₹999, Pro ₹2,499, Enterprise ₹4,999)
     const estimatedMrr =
-      planBreakdown.starter * 999 +
-      planBreakdown.pro * 2499 +
-      planBreakdown.enterprise * 4999;
+      activePlanBreakdown.starter * 999 +
+      activePlanBreakdown.pro * 2499 +
+      activePlanBreakdown.enterprise * 4999;
 
-    // Today's statistics
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
+    // Today's statistics aligned with Indian Standard Time (IST: UTC +5:30)
+    const now = new Date();
+    const istTodayDate = now.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // "YYYY-MM-DD"
     let todayOrdersCount = 0;
     let todayGmv = 0;
 
     restaurants.forEach((r) => {
       r.orders.forEach((o) => {
-        if (new Date(o.createdAt) >= startOfToday) {
+        const orderIstDate = new Date(o.createdAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+        if (orderIstDate === istTodayDate) {
           todayOrdersCount++;
           if (o.status !== "cancelled") {
             todayGmv += o.total || 0;

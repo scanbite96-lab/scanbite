@@ -270,6 +270,38 @@
     - **Comprehensive SaaS Footer & WhatsApp Support:** Added full multi-column footer with live portal links, feature shortcuts, trust badges (Made in India 🇮🇳, 0% Commission, 99.9% Uptime), and direct WhatsApp support link (`+91 98765 43210`).
     - **Zero-Regression Verification:** Full production Next.js build (`npm run build`) compiled 100% of pages (all 23 routes) with 0 errors, verified locally via Chrome DevTools MCP with 0 console errors.
 
+24. **Dashboard (`/dashboard`) vs Waiter Companion (`/waiter`) Workflow Hardening & Live Sync (Verified Nov 1, 2026):**
+    - **Dual Role Distinction Clarified:**
+      - `/dashboard`: Desktop/Tablet command center for Restaurant Owners (full P&L metrics, staff management, menu edit, QR generator) & Kitchen Chefs (KDS tickets, preparation status, thermal KOT printing).
+      - `/waiter`: Ultra-fast mobile web companion for Floor Waiters & Captains on their personal smartphones (haptic pocket buzzers, instant table assistance alerts, rapid POS order punching at tables).
+    - **Unified Haptic & Audio Alert Engine (`src/app/waiter/page.tsx`):** Waiter buzzer previously only monitored pending service calls (`pendingSrv`), ignoring food pickup alerts. Unified urgent counter (`totalUrgentAlertsNow = pendingSrvCount + readyOrdersCount`) so waiter smartphones now physically vibrate and play audio chimes when hot dishes are marked "Food Ready 🔔" by the kitchen.
+    - **Waiter Food Delivery Permission Fix (`src/app/api/orders/route.ts`):** In `PATCH /api/orders`, allowed staff members with `canManageRequests` (waiters) to update order status to `"served"`, preventing `403 Forbidden` errors when delivering completed orders to customer tables.
+    - **1-Click Slug Continuity:** Updated the "Waiter Mode" shortcut in `/dashboard` header to pass the current restaurant slug (`/waiter?slug=${restaurant.slug}`) for instantaneous single-tenant floor login.
+    - **Hindi Transliteration & Synonyms in Waiter POS:** Integrated Hindi food keyword dictionary (`पनीर`, `बिरयानी`, `चिकन`, `रोटी`, `दाल`, etc.) into the mobile waiter dish search bar, enabling rapid table order punching.
+    - **Zero-Regression Verification:** Full Next.js production build (`npm run build`) compiled 100% of pages with 0 errors.
+
+25. **Marketing Landing Page Decoupling & Operational Security Hardening (Verified Nov 1, 2026):**
+    - **Elimination of Operational Tools from Marketing:** Removed `/waiter` from the landing page hero and interactive simulator. Waiter mode is an internal floor companion requiring PIN authentication and is intended only for restaurant staff, not public marketing visitors.
+    - **High-Converting 2-Pillar Hero & Simulator:** Focused the landing page exclusively on prospective client conversion:
+      1. 📱 Customer Table QR Ordering Experience (`/r/grand-spice/t/tbl-4`).
+      2. 🍳 Kitchen Display System (KDS) & Owner Console Demo (`/dashboard?demo=true`).
+    - **Clean Navbar & Mobile Drawer:** Removed the "Sign In / लॉगिन" button from the top navbar and the mobile drawer, preventing confusion for new restaurant leads. Kept primary CTAs as "Get ScanBite Free" (`/register`) and "Explore Demo". Added a subtle "Restaurant Partner Login" link in the footer support column for existing partners.
+    - **Compiler & Strict 404 Route Preservation (`/admin`):** Converted `src/app/admin/page.tsx` with `notFound()` to satisfy Next.js webpack route trace plugin while ensuring all public `/admin` requests deterministically return HTTP 404. Super Admin remains stealthily accessible only via `/founder-hq`.
+    - **Typo Fix (`src/app/waiter/page.tsx`):** Resolved variable typo from `totalAlertsNow` to `totalUrgentAlertsNow`.
+
+26. **Super Admin Command Center (`/founder-hq`) Multi-Bug Forensic Audit & Operational Hardening (Verified Nov 1, 2026):**
+    - **IST Financial Calculation Accuracy (`src/lib/store.ts`):** Grounded "Today's Orders" and "Today's GMV" calculation strictly in `timeZone: "Asia/Kolkata"`. Previously, Vercel serverless UTC midnight truncated Indian orders placed between 12:00 AM and 5:30 AM IST.
+    - **Active SaaS MRR Calculation (`src/lib/store.ts`):** Excluded suspended accounts from recurring revenue projections (`activePlanBreakdown`), ensuring MRR strictly reflects paying, active restaurant partners.
+    - **Browser Popup Blocker Bypass (`src/app/founder-hq/page.tsx`):** In `handleImpersonate`, browser popup blockers were triggered because `window.open` was called asynchronously after `await fetch(...)`. Re-architected to synchronously open a blank window on click and update `location.href` upon backend authorization.
+    - **Unstable Array Sort Comparator Fix (`src/app/founder-hq/page.tsx`):** Fixed `sortBy === "expiry_asc"` where lifetime accounts with `null` expiry evaluated to `Infinity - Infinity === NaN`, corrupting V8 array sort stability. Explicitly handles lifetime accounts with a 0 return value.
+    - **CSV Column Shift Fix (`src/app/founder-hq/page.tsx`):** Enclosed formatted timestamps in double quotes (`"${new Date(...).toLocaleString()}"`) in `handleExportOrdersCsv` and `handleExportRestaurantsCsv`. Previously, unquoted commas split date and time into separate CSV cells, misaligning all columns in Excel/Sheets.
+    - **WhatsApp Phone Normalization (`src/app/founder-hq/page.tsx`):** Cleaned phone formatting in Tab 5 to strip leading zeros and take the last 10 digits before prefixing `91`, preventing invalid 13-digit WhatsApp URLs like `9109876543210`.
+    - **Direct Interactive Order Status Management (`src/app/founder-hq/page.tsx`):** Added `handleUpdateOrderStatus` wired to `PATCH /api/orders` (using existing Super Admin authorization bypass), allowing the founder to intervene and update order statuses (`pending`, `cooking`, `ready`, `served`, `completed`, `cancelled`) live from the command center.
+    - **Filter Auto-Reset on Navigation (`src/app/founder-hq/page.tsx`):** When clicking "In Fleet" from an inquiry row or when newly onboarding a restaurant, all table filters (`planFilter`, `statusFilter`, `cityFilter`) are automatically reset to `"all"`, guaranteeing the newly converted restaurant is immediately visible.
+    - **QR Standee Download Filename Sanitization (`src/app/founder-hq/page.tsx`):** Sanitized table numbers in downloaded QR filenames using `.replace(/[^a-zA-Z0-9_-]/g, "_")`, preventing download failures on special characters.
+    - **Typo Fix (`src/app/founder-hq/page.tsx`):** Corrected "demo demo scheduled" in Tab 5 to "demo scheduled".
+    - **Verification:** 100% of routes (all 23 routes) compiled with 0 TypeScript/Next.js errors (`cmd /c "npm run build"`).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

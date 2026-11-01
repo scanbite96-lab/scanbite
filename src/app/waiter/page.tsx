@@ -102,12 +102,17 @@ export default function WaiterMobilePage() {
   const [punchSuccessMsg, setPunchSuccessMsg] = useState<string | null>(null);
   const [isAttendingAction, setIsAttendingAction] = useState<string | null>(null);
 
-  // 1. Check existing Auth on mount
+  // 1. Check existing Auth on mount & parse URL slug param
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const savedSlug = localStorage.getItem("scanbite_waiter_slug") || "grand-spice";
+        const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+        const querySlug = sp?.get("slug");
+        const savedSlug = querySlug || localStorage.getItem("scanbite_waiter_slug") || "grand-spice";
         setSlugInput(savedSlug);
+        if (querySlug) {
+          localStorage.setItem("scanbite_waiter_slug", querySlug);
+        }
 
         const res = await fetch("/api/auth");
         const data = await res.json();
@@ -115,6 +120,7 @@ export default function WaiterMobilePage() {
           setSession(data.user);
           if (data.user.slug) {
             setSlugInput(data.user.slug);
+            localStorage.setItem("scanbite_waiter_slug", data.user.slug);
           }
         }
       } catch (err) {
@@ -126,7 +132,6 @@ export default function WaiterMobilePage() {
     checkAuth();
   }, []);
 
-  // 2. Fetch Restaurant Data & Live Updates
   // 2. Silent Operational Polling (Orders & Service Requests only)
   // Decoupled from static restaurant/menu data to eliminate 2-3s auto-refresh flickering
   const pollLiveOperationalData = async (targetId?: string, force = false) => {
@@ -146,10 +151,12 @@ export default function WaiterMobilePage() {
       ]);
 
       let hasStateChanged = false;
+      let currentReadyCount = 0;
 
       if (ordersRes.ok) {
         const ordersData = await ordersRes.json();
         const ordArray = Array.isArray(ordersData) ? ordersData : [];
+        currentReadyCount = ordArray.filter((o: Order) => o.status === "ready").length;
         const ordFp = ordArray.map((o: Order) => `${o.id}_${o.status}_${o.paymentStatus}_${o.items?.length || 0}`).join("|");
         if (force || ordFp !== lastOrdersFpRef.current) {
           lastOrdersFpRef.current = ordFp;
@@ -158,24 +165,26 @@ export default function WaiterMobilePage() {
         }
       }
 
+      let currentPendingSrvCount = 0;
       if (srvRes.ok) {
         const srvData = await srvRes.json();
         const pendingSrv = Array.isArray(srvData) ? srvData.filter((s: ServiceRequest) => s.status === "pending") : [];
+        currentPendingSrvCount = pendingSrv.length;
         const srvFp = pendingSrv.map((s: ServiceRequest) => `${s.id}_${s.status}`).join("|");
         if (force || srvFp !== lastSrvFpRef.current) {
           lastSrvFpRef.current = srvFp;
           setServiceRequests(pendingSrv);
           hasStateChanged = true;
-
-          // Buzzer Check: If new urgent alert arrived
-          const totalAlertsNow = pendingSrv.length;
-          if (!isFirstLoadRef.current && totalAlertsNow > lastAlertsCountRef.current) {
-            triggerBuzzer();
-          }
-          lastAlertsCountRef.current = totalAlertsNow;
         }
-        isFirstLoadRef.current = false;
       }
+
+      // Unified Buzzer Check: Table Calls (Water/Waiter/Bill) + Kitchen Food Ready for Pickup
+      const totalUrgentAlertsNow = currentPendingSrvCount + currentReadyCount;
+      if (!isFirstLoadRef.current && totalUrgentAlertsNow > lastAlertsCountRef.current) {
+        triggerBuzzer();
+      }
+      lastAlertsCountRef.current = totalUrgentAlertsNow;
+      isFirstLoadRef.current = false;
 
       if (hasStateChanged || force) {
         setLastRefreshed(new Date());
@@ -554,15 +563,16 @@ export default function WaiterMobilePage() {
         };
       });
 
+      const resolvedTableNum = selectedPunchTableNumber || tables.find((t) => t.id === selectedPunchTableId)?.tableNumber || "Table";
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           restaurantId: restaurant.id,
           tableId: selectedPunchTableId,
-          tableNumber: selectedPunchTableNumber || "Table",
+          tableNumber: resolvedTableNum,
           items: orderItems,
-          customerName: dinerGuestName.trim() || `Guest (${selectedPunchTableNumber})`,
+          customerName: dinerGuestName.trim() || `Guest (${resolvedTableNum})`,
           paymentMethod: "counter_cash",
         }),
       });
@@ -627,8 +637,41 @@ export default function WaiterMobilePage() {
       list = list.filter((i) => i.categoryId === selectedCategory);
     }
     if (searchDishQuery.trim()) {
-      const q = searchDishQuery.toLowerCase();
-      list = list.filter((i) => i.name.toLowerCase().includes(q) || (i.description && i.description.toLowerCase().includes(q)));
+      const q = searchDishQuery.toLowerCase().trim();
+      const hindiMap: Record<string, string[]> = {
+        "पनीर": ["paneer"],
+        "बिरयानी": ["biryani"],
+        "चिकन": ["chicken", "murgh", "tikka"],
+        "मटन": ["mutton", "gosht", "lamb"],
+        "दाल": ["dal", "daal", "makhani"],
+        "रोटी": ["roti", "naan", "paratha", "kulcha"],
+        "नान": ["naan"],
+        "पिज्जा": ["pizza"],
+        "बर्गर": ["burger"],
+        "सूप": ["soup"],
+        "मीठा": ["sweet", "dessert", "brownie", "ice cream"],
+        "चावल": ["rice", "biryani", "pulao"],
+        "चाय": ["tea", "chai"],
+        "कॉफी": ["coffee"],
+      };
+
+      list = list.filter((i) => {
+        const matchesName = i.name.toLowerCase().includes(q);
+        const matchesDesc = i.description?.toLowerCase().includes(q) ?? false;
+        if (matchesName || matchesDesc) return true;
+
+        for (const [hindiWord, englishTerms] of Object.entries(hindiMap)) {
+          if (q.includes(hindiWord)) {
+            const matchesSynonym = englishTerms.some(
+              (term) =>
+                i.name.toLowerCase().includes(term) ||
+                (i.description && i.description.toLowerCase().includes(term))
+            );
+            if (matchesSynonym) return true;
+          }
+        }
+        return false;
+      });
     }
     return list;
   }, [menuItems, selectedCategory, searchDishQuery]);

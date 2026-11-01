@@ -33,7 +33,7 @@ import {
 export default function SaaSPlatformHome() {
   const [lang, setLang] = useState<"en" | "hi">("en");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"customer" | "kitchen" | "waiter">("customer");
+  const [activeTab, setActiveTab] = useState<"customer" | "kitchen">("customer");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   // ROI Calculator states
@@ -118,18 +118,10 @@ export default function SaaSPlatformHome() {
               <span>{lang === "en" ? "🇮🇳 हिंदी" : "🇬🇧 English"}</span>
             </button>
 
-            {/* Restaurant Owner Login */}
-            <Link
-              href="/dashboard"
-              className="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 border border-slate-700/70 hover:border-slate-600 transition"
-            >
-              <span>{lang === "hi" ? "लॉगिन" : "Sign In"}</span>
-            </Link>
-
             {/* Free Trial / Register CTA */}
             <Link
               href="/register"
-              className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/40 transition active:scale-95 shadow-sm shadow-orange-500/10"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/40 transition active:scale-95 shadow-sm shadow-orange-500/10"
             >
               <span>{lang === "hi" ? "फ्री सेटअप" : "Get ScanBite Free"}</span>
             </Link>
@@ -139,7 +131,7 @@ export default function SaaSPlatformHome() {
               href="/dashboard?demo=true"
               className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-1.5"
             >
-              <span>{lang === "hi" ? "लाइव डेमो" : "Live Demo"}</span>
+              <span>{lang === "hi" ? "लाइव डेमो" : "Explore Demo"}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
 
@@ -204,13 +196,6 @@ export default function SaaSPlatformHome() {
 
             <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
               <Link
-                href="/dashboard"
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-full py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-center text-xs font-bold text-slate-300 hover:text-white"
-              >
-                {lang === "hi" ? "🔑 रेस्टोरेंट ओनर / स्टाफ लॉगिन" : "🔑 Restaurant Owner & Staff Sign In"}
-              </Link>
-              <Link
                 href="/register"
                 onClick={() => setMobileMenuOpen(false)}
                 className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-center text-xs font-black text-white shadow-lg shadow-orange-600/30"
@@ -262,44 +247,34 @@ export default function SaaSPlatformHome() {
               : "Diners scan the table QR code, browse high-res photos, and place orders directly from their phones. Zero waiter bottlenecks, zero printed menu reprints, and 30% faster table turnover."}
           </p>
 
-          {/* 3 Pillars of ScanBite - Interactive Live Demo Links */}
-          <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-3xl mx-auto">
+          {/* Interactive Live Demo Buttons */}
+          <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-2xl mx-auto">
             {/* Pillar 1: Customer Menu */}
             <Link
               href="/r/grand-spice/t/tbl-4"
               target="_blank"
-              className="w-full sm:w-auto flex-1 px-4 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2"
             >
               <Smartphone className="w-4 h-4 shrink-0" />
-              <span>{lang === "hi" ? "📱 कस्टमर टेबल मेन्यू (Table 4)" : "📱 Customer QR Menu (Table 4)"}</span>
+              <span>{lang === "hi" ? "📱 कस्टमर टेबल मेन्यू (Table 4 Demo)" : "📱 Customer QR Menu (Table 4 Demo)"}</span>
             </Link>
 
             {/* Pillar 2: Kitchen KDS & Dashboard */}
             <Link
               href="/dashboard?demo=true"
               target="_blank"
-              className="w-full sm:w-auto flex-1 px-4 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 transition active:scale-95 flex items-center justify-center gap-2"
             >
               <ChefHat className="w-4 h-4 text-orange-400 shrink-0" />
-              <span>{lang === "hi" ? "🍳 किचन KDS व ओनर कंसोल" : "🍳 Kitchen KDS & Owner Console"}</span>
-            </Link>
-
-            {/* Pillar 3: Waiter Mode */}
-            <Link
-              href="/waiter"
-              target="_blank"
-              className="w-full sm:w-auto flex-1 px-4 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 transition active:scale-95 flex items-center justify-center gap-2"
-            >
-              <Bell className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>{lang === "hi" ? "🛎️ मोबाइल वेटर मोड" : "🛎️ Mobile Waiter Mode"}</span>
+              <span>{lang === "hi" ? "🍳 किचन KDS व ओनर कंसोल (Live Demo)" : "🍳 Kitchen KDS & Owner Console (Live Demo)"}</span>
             </Link>
           </div>
 
           <div className="mt-4 text-center">
             <span className="text-[11px] text-slate-400 font-medium">
               💡 {lang === "hi" 
-                ? "सभी 3 मोड लाइव कनेक्टेड हैं — तीनों को अलग-अलग टैब में खोलकर रियल-टाइम सिंक टेस्ट करें!" 
-                : "All 3 portals are live-connected — open in separate tabs to experience real-time sync!"}
+                ? "ग्राहक फोन से आर्डर करते हैं और किचन में लाइव टिकट पहुंचता है — दोनों टैब्स को खोलकर रियल-टाइम सिंक टेस्ट करें!" 
+                : "Diners order on their phones and tickets arrive live in the kitchen — open both tabs to test real-time sync!"}
             </span>
           </div>
 
@@ -342,12 +317,12 @@ export default function SaaSPlatformHome() {
               <span>{lang === "hi" ? "लाइव सॉफ्टवेयर सिमुलेटर" : "Interactive Product Simulator"}</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-              {lang === "hi" ? "एक ही सिस्टम, तीन ताकतवर पोर्टल्स" : "One Engine, Three Connected Portals"}
+              {lang === "hi" ? "एक ही सिस्टम, सीमलेस डाइनिंग फ्लो" : "One Engine, Seamless Dining Flow"}
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-2">
               {lang === "hi" 
-                ? "नीचे किसी भी पोर्टल पर क्लिक करके देखें कि ScanBite आपके रेस्टोरेंट को कैसे गति देता है"
-                : "Click below to preview how ScanBite operates across diners, chefs, and floor captains"}
+                ? "नीचे क्लिक करके देखें कि कैसे ग्राहक फोन से आर्डर करते हैं और किचन में रियल-टाइम टिकट पहुंचता है"
+                : "Click below to preview how diners order from their phone and chefs receive tickets in real time"}
             </p>
           </div>
 
@@ -356,38 +331,26 @@ export default function SaaSPlatformHome() {
             <div className="inline-flex p-1.5 rounded-2xl bg-slate-950 border border-slate-800 gap-1 sm:gap-2">
               <button
                 onClick={() => setActiveTab("customer")}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
                   activeTab === "customer"
                     ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
                 <Smartphone className="w-4 h-4" />
-                <span>{lang === "hi" ? "ग्राहक क्यूआर मेन्यू" : "Customer QR Menu"}</span>
+                <span>{lang === "hi" ? "ग्राहक क्यूआर मेन्यू" : "Customer QR Experience"}</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("kitchen")}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
                   activeTab === "kitchen"
                     ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
                 <ChefHat className="w-4 h-4" />
-                <span>{lang === "hi" ? "किचन KDS कंसोल" : "Kitchen KDS"}</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("waiter")}
-                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
-                  activeTab === "waiter"
-                    ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Bell className="w-4 h-4" />
-                <span>{lang === "hi" ? "वेटर और कैप्टन ऐप" : "Waiter & Captain"}</span>
+                <span>{lang === "hi" ? "किचन KDS कंसोल" : "Kitchen KDS Display"}</span>
               </button>
             </div>
           </div>
@@ -401,9 +364,9 @@ export default function SaaSPlatformHome() {
                 <div className="w-3 h-3 rounded-full bg-amber-500/80" />
                 <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
                 <span className="text-xs font-mono text-slate-500 ml-2">
-                  {activeTab === "customer" && "scanbite-plum.vercel.app/r/grand-spice/t/tbl-4"}
-                  {activeTab === "kitchen" && "scanbite-plum.vercel.app/dashboard?demo=true"}
-                  {activeTab === "waiter" && "scanbite-plum.vercel.app/waiter"}
+                  {activeTab === "customer" 
+                    ? "scanbite-plum.vercel.app/r/grand-spice/t/tbl-4"
+                    : "scanbite-plum.vercel.app/dashboard?demo=true"}
                 </span>
               </div>
 
@@ -604,97 +567,6 @@ export default function SaaSPlatformHome() {
                         Print KOT
                       </button>
                     </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: Waiter Mode Preview */}
-            {activeTab === "waiter" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-xs font-bold">
-                    <Bell className="w-3.5 h-3.5" />
-                    <span>{lang === "hi" ? "डेडिकेटेड मोबाइल वेटर व कैप्टन ऐप" : "Dedicated Mobile Waiter & Captain App"}</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-bold text-white">
-                    {lang === "hi" 
-                      ? "जेब में फोन, वाइब्रेशन अलर्ट और 1-टैप टेबल अटेंडेंस"
-                      : "Haptic Vibrations in Pocket, Instant Table Assistance"}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                    {lang === "hi"
-                      ? "वेटर के स्मार्टफोन पर 4-अंकों का पिन लॉगिन। जब टेबल 4 पर पानी या बिल मांगा जाता है, तो फोन वाइब्रेट और बीप करता है। वेटर टेबल पर खड़े-खड़े भी सीधे ऐप से नया ऑर्डर पंच कर सकता है।"
-                      : "4-Digit quick PIN login on waiters' own phones. Whenever a guest calls for water or the bill, the phone buzzes with haptic vibration. Waiters can also punch direct table orders into POS mode."}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                      <div className="text-xs font-bold text-sky-400 mb-1">
-                        {lang === "hi" ? "📳 हैप्टिक वाइब्रेशन बजर" : "📳 Haptic Vibration Alert"}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {lang === "hi" ? "शोरगुल में भी कॉल कभी मिस नहीं होती" : "Never miss a call even in a loud restaurant dining room"}
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                      <div className="text-xs font-bold text-emerald-400 mb-1">
-                        {lang === "hi" ? "🪑 लाइव फ्लोर प्लान" : "🪑 Live Floor Grid"}
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {lang === "hi" ? "🟢 खाली, 🔴 खाना चल रहा है, 🟡 बिल प्रतीक्षित" : "🟢 Free, 🔴 Dining, 🟡 Bill Pending, 🔵 Calling"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-2">
-                    <Link
-                      href="/waiter"
-                      target="_blank"
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition"
-                    >
-                      <span>{lang === "hi" ? "वेटर मोड खोलकर टेस्ट करें" : "Test Live Waiter Mode"}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* Mock Waiter Alert Display */}
-                <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-inner max-w-sm mx-auto w-full space-y-2.5">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-800 text-xs">
-                    <span className="font-bold text-white">🛎️ Active Table Calls</span>
-                    <span className="text-[10px] bg-red-500/20 text-red-400 font-bold px-2 py-0.5 rounded">
-                      2 Urgent
-                    </span>
-                  </div>
-
-                  {/* Water Call */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-sky-500/40 flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <Droplets className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Table 4: Drinking Water</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400">Requested 1m ago</div>
-                    </div>
-                    <button className="px-3 py-1 rounded-lg bg-sky-600 text-white text-[10px] font-bold">
-                      ✓ Attend
-                    </button>
-                  </div>
-
-                  {/* Kitchen Food Ready Call */}
-                  <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                        <ChefHat className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Table 2: Food Ready for Pickup</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400">2 Dishes waiting on counter</div>
-                    </div>
-                    <button className="px-3 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-bold">
-                      ✓ Delivered
-                    </button>
                   </div>
                 </div>
               </div>
@@ -1346,27 +1218,22 @@ export default function SaaSPlatformHome() {
             {/* Col 2: Live Demos */}
             <div>
               <div className="text-xs font-bold uppercase tracking-wider text-white mb-3">
-                {lang === "hi" ? "लाइव डेमो पोर्टल्स" : "Live Portals"}
+                {lang === "hi" ? "लाइव डेमो" : "Live Product Demos"}
               </div>
               <ul className="space-y-2 text-xs">
                 <li>
                   <Link href="/r/grand-spice/t/tbl-4" target="_blank" className="hover:text-orange-400 transition">
-                    📱 Customer Table 4 Menu
+                    📱 Customer QR Menu Demo
                   </Link>
                 </li>
                 <li>
                   <Link href="/dashboard?demo=true" target="_blank" className="hover:text-orange-400 transition">
-                    🍳 Kitchen Display (KDS)
+                    🍳 Kitchen &amp; Owner Console Demo
                   </Link>
                 </li>
                 <li>
-                  <Link href="/waiter" target="_blank" className="hover:text-orange-400 transition">
-                    🛎️ Waiter &amp; Captain App
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/dashboard" className="hover:text-orange-400 transition">
-                    🔑 Owner Portal Login
+                  <Link href="/register" className="hover:text-orange-400 transition">
+                    🚀 Free 14-Day Trial Setup
                   </Link>
                 </li>
               </ul>
@@ -1405,6 +1272,11 @@ export default function SaaSPlatformHome() {
                 </li>
                 <li><a href="#pricing" className="hover:text-orange-400 transition">{lang === "hi" ? "प्लान्स व दाम" : "Pricing Plans"}</a></li>
                 <li><a href="#faq" className="hover:text-orange-400 transition">{lang === "hi" ? "सवाल-जवाब" : "FAQ Support"}</a></li>
+                <li>
+                  <Link href="/dashboard" className="hover:text-slate-300 transition text-[11px] text-slate-600 block mt-2">
+                    Restaurant Partner Login
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>
