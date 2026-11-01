@@ -251,6 +251,14 @@
     - **Demo Restaurant Deletion Guard:** Added guard in `deleteRestaurant` to prevent accidental deletion of `rest-001` (`grand-spice`).
     - **Build & Route Integrity:** Verified `/admin` remains a strict 404 and `/founder-hq` is the exclusive stealth access point. Full Next.js production build (`npm run build`) passed with 100% success (22/22 static & dynamic routes compiled with 0 errors).
 
+22. **Partner Lead Approval & Automatic Fleet Migration Workflow (`/founder-hq`) (Verified Nov 1, 2026):**
+    - **Lead-to-Fleet Approval Linkage:** Clicking "Approve & Onboard" on any partner lead tracks `onboardingInquiryId`. When the founder registers the restaurant, it automatically:
+      1. Provisions the new restaurant in Neon PostgreSQL via `POST /api/restaurants`.
+      2. Automatically calls `PATCH /api/inquiries` to update the lead's status to `"converted"` in Neon PostgreSQL.
+      3. Seamlessly navigates the Super Admin to **Tab 1: "Restaurants Fleet"** and filters/highlights the newly onboarded restaurant.
+    - **Active vs Converted Leads Separation:** Added an `"Active Pipeline (Pending Leads)"` quick filter in Tab 5. When a lead is approved and onboarded, it naturally clears from the pending leads pipeline and moves to `"Converted (Fleet)"`.
+    - **In-Fleet Direct Jump:** Converted leads in Tab 5 show a green `"In Fleet"` button with direct 1-click navigation to the restaurant in the fleet, eliminating duplicate onboarding attempts.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

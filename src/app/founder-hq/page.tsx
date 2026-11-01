@@ -162,6 +162,7 @@ export default function SuperAdminDashboard() {
     initialTables: 6,
   });
   const [isSubmittingNewRest, setIsSubmittingNewRest] = useState(false);
+  const [onboardingInquiryId, setOnboardingInquiryId] = useState<string | null>(null);
 
   // QR Standee Kit Modal
   const [isQrKitModalOpen, setIsQrKitModalOpen] = useState(false);
@@ -394,8 +395,14 @@ export default function SuperAdminDashboard() {
         (inq.city && inq.city.toLowerCase().includes(inquiriesSearch.toLowerCase())) ||
         (inq.notes && inq.notes.toLowerCase().includes(inquiriesSearch.toLowerCase()));
 
-      const matchStatus =
-        inquiriesStatusFilter === "all" || inq.status.toLowerCase() === inquiriesStatusFilter.toLowerCase();
+      let matchStatus = true;
+      if (inquiriesStatusFilter === "all") {
+        matchStatus = true;
+      } else if (inquiriesStatusFilter === "active_pipeline") {
+        matchStatus = inq.status !== "converted" && inq.status !== "closed";
+      } else {
+        matchStatus = inq.status.toLowerCase() === inquiriesStatusFilter.toLowerCase();
+      }
 
       return matchSearch && matchStatus;
     });
@@ -442,6 +449,7 @@ export default function SuperAdminDashboard() {
 
   // 1-Click Onboard from Lead
   const handleOnboardInquiry = (inq: Inquiry) => {
+    setOnboardingInquiryId(inq.id);
     const slugCandidate = (inq.restaurantName || "rest")
       .toLowerCase()
       .trim()
@@ -699,8 +707,26 @@ export default function SuperAdminDashboard() {
 
       const data = await res.json();
       if (res.ok) {
-        showToast(`🎉 Restaurant "${newRestForm.name}" onboarded successfully!`);
+        showToast(`🎉 Restaurant "${newRestForm.name}" approved & launched into Fleet!`);
         setIsAddRestModalOpen(false);
+
+        // If this onboarding originated from a partner lead, automatically mark it as converted
+        if (onboardingInquiryId) {
+          try {
+            await fetch("/api/inquiries", {
+              method: "PATCH",
+              headers: getAdminHeaders(),
+              body: JSON.stringify({ id: onboardingInquiryId, status: "converted" }),
+            });
+            setInquiries((prev) =>
+              prev.map((i) => (i.id === onboardingInquiryId ? { ...i, status: "converted" } : i))
+            );
+          } catch (inqErr) {
+            console.error("Failed to mark inquiry converted:", inqErr);
+          }
+          setOnboardingInquiryId(null);
+        }
+
         setNewRestForm({
           name: "",
           slug: "",
@@ -713,7 +739,13 @@ export default function SuperAdminDashboard() {
           plan: "starter",
           initialTables: 6,
         });
-        fetchAdminData();
+
+        // Refresh fleet metrics
+        await fetchAdminData(false);
+
+        // Seamlessly move to Restaurants Fleet tab and highlight the new restaurant
+        setActiveTab("restaurants");
+        setSearchTerm(slug);
       } else {
         showToast(`❌ ${data.error || "Slug already exists or invalid data"}`);
       }
@@ -2025,17 +2057,17 @@ export default function SuperAdminDashboard() {
                   </div>
 
                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
-                    {["all", "new", "contacted", "demo_scheduled", "converted", "closed"].map((st) => (
+                    {["all", "active_pipeline", "new", "contacted", "demo_scheduled", "converted", "closed"].map((st) => (
                       <button
                         key={st}
                         onClick={() => setInquiriesStatusFilter(st)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition whitespace-nowrap ${
                           inquiriesStatusFilter === st
-                            ? "bg-orange-600 text-white"
+                            ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                             : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
                         }`}
                       >
-                        {st.replace("_", " ")}
+                        {st === "active_pipeline" ? "Pending Leads" : st.replace("_", " ")}
                       </button>
                     ))}
                   </div>
@@ -2178,19 +2210,37 @@ export default function SuperAdminDashboard() {
                             <option value="new">Status: New</option>
                             <option value="contacted">Status: Contacted</option>
                             <option value="demo_scheduled">Status: Demo Scheduled</option>
-                            <option value="converted">Status: Converted</option>
+                            <option value="converted">Status: Converted (Fleet)</option>
                             <option value="closed">Status: Closed</option>
                           </select>
 
-                          {/* 1-Click Onboard */}
-                          <button
-                            onClick={() => handleOnboardInquiry(inq)}
-                            className="flex items-center gap-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-3 py-1.5 rounded-xl text-xs font-black transition shadow-md shadow-orange-600/20"
-                            title="Create restaurant account from this inquiry"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Onboard</span>
-                          </button>
+                          {/* 1-Click Approve & Onboard / In Fleet Navigator */}
+                          {inq.status === "converted" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab("restaurants");
+                                setSearchTerm(inq.restaurantName);
+                                showToast(`🔍 Showing ${inq.restaurantName} in Fleet`);
+                              }}
+                              className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm active:scale-95"
+                              title="Already onboarded in Fleet! Click to view in Fleet."
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>In Fleet</span>
+                              <ExternalLink className="w-3 h-3 text-emerald-400" />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOnboardInquiry(inq)}
+                              className="flex items-center gap-1.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-3 py-1.5 rounded-xl text-xs font-black transition shadow-md shadow-orange-600/20 active:scale-95"
+                              title="Approve partner lead & launch restaurant in Fleet"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Approve & Onboard</span>
+                            </button>
+                          )}
 
                           {/* Delete Lead */}
                           <button
@@ -2546,16 +2596,28 @@ export default function SuperAdminDashboard() {
               <div className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-orange-400" />
                 <h3 className="font-extrabold text-base text-white">
-                  Direct Onboard Restaurant
+                  {onboardingInquiryId ? "Approve Lead & Onboard Restaurant" : "Direct Onboard Restaurant"}
                 </h3>
               </div>
               <button
-                onClick={() => setIsAddRestModalOpen(false)}
+                onClick={() => {
+                  setIsAddRestModalOpen(false);
+                  setOnboardingInquiryId(null);
+                }}
                 className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {onboardingInquiryId && (
+              <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-300">
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
+                <span>
+                  Approving this lead will register the restaurant in the database, add it to your <b>Fleet</b>, and automatically mark this lead as <b>Converted</b>.
+                </span>
+              </div>
+            )}
 
             <form onSubmit={handleCreateRestaurant} className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -2697,7 +2759,10 @@ export default function SuperAdminDashboard() {
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setIsAddRestModalOpen(false)}
+                  onClick={() => {
+                    setIsAddRestModalOpen(false);
+                    setOnboardingInquiryId(null);
+                  }}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
                 >
                   Cancel
@@ -2707,7 +2772,11 @@ export default function SuperAdminDashboard() {
                   disabled={isSubmittingNewRest}
                   className="px-5 py-2.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-orange-600/30 transition active:scale-95 disabled:opacity-50"
                 >
-                  {isSubmittingNewRest ? "Onboarding..." : "Register & Launch Restaurant"}
+                  {isSubmittingNewRest
+                    ? "Launching..."
+                    : onboardingInquiryId
+                    ? "Approve & Launch into Fleet"
+                    : "Register & Launch Restaurant"}
                 </button>
               </div>
             </form>
