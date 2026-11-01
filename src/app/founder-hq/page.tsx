@@ -41,6 +41,7 @@ import {
   BarChart3, 
   SlidersHorizontal,
   Check,
+  Copy,
   X,
   CreditCard,
   Ban,
@@ -141,6 +142,8 @@ export default function SuperAdminDashboard() {
   const [credsStaffPin, setCredsStaffPin] = useState("");
   const [showCredsPassword, setShowCredsPassword] = useState(false);
   const [isSavingCreds, setIsSavingCreds] = useState(false);
+  const [credsTemplate, setCredsTemplate] = useState<"welcome" | "reset" | "renewal">("welcome");
+  const [isCredsCopied, setIsCredsCopied] = useState(false);
 
   // Broadcast & Maintenance Modal
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
@@ -661,7 +664,132 @@ export default function SuperAdminDashboard() {
     setCredsPassword(isPassHashed ? "" : (restaurant.password || "admin123"));
     setCredsStaffPin(restaurant.staffPin || "1234");
     setShowCredsPassword(false);
+    setCredsTemplate("welcome");
+    setIsCredsCopied(false);
     setIsCredsModalOpen(true);
+  };
+
+  // Generate formatted WhatsApp message for owner
+  const getWhatsAppCredsMessage = (
+    template: "welcome" | "reset" | "renewal",
+    rest: AdminRestaurantRow,
+    ownerName: string,
+    phone: string,
+    passwordInput: string,
+    staffPinInput: string
+  ) => {
+    const origin = typeof window !== "undefined" && window.location.origin ? window.location.origin : "https://scanbite-plum.vercel.app";
+    const name = ownerName.trim() || rest.ownerName || "Partner";
+    const restName = rest.name;
+    const slug = rest.slug;
+    const pin = staffPinInput.trim() || rest.staffPin || "1234";
+
+    let passwordDisplay = passwordInput.trim();
+    if (!passwordDisplay) {
+      if (rest.password && !rest.password.startsWith("scrypt:")) {
+        passwordDisplay = rest.password;
+      } else {
+        passwordDisplay = "admin123 (Default)";
+      }
+    }
+
+    if (template === "welcome") {
+      return `👋 Namaste ${name} ji!
+ScanBite par aapka swagat hai. Aapke restaurant "${restName}" ka Digital QR Menu aur Management System successfully ready ho gaya hai! 🎉
+
+━━━━━━━━━━━━━━━━━━━━
+🔐 AAPKE LOGIN CREDENTIALS
+━━━━━━━━━━━━━━━━━━━━
+🌐 Owner Dashboard:
+${origin}/dashboard?slug=${slug}
+👤 ID/Slug: ${slug}
+🔑 Password: ${passwordDisplay}
+🛎️ Staff/Waiter PIN: ${pin}
+
+━━━━━━━━━━━━━━━━━━━━
+📱 CORE APPS & SHORTCUTS
+━━━━━━━━━━━━━━━━━━━━
+1️⃣ Customer QR Digital Menu:
+${origin}/r/${slug}/t/1
+
+2️⃣ Waiters & Captain Floor App:
+${origin}/waiter?slug=${slug}
+(Waiters ke phone me open karein - PIN: ${pin})
+
+3️⃣ Kitchen Display (KDS):
+${origin}/dashboard?slug=${slug}&tab=kds
+(Kitchen screen/tablet ke liye)
+
+4️⃣ Table QR Standees (Printable Kit):
+${origin}/dashboard?slug=${slug}&tab=tables
+(Download & Print Table Standees)
+
+━━━━━━━━━━━━━━━━━━━━
+🚀 3-STEP QUICK START:
+━━━━━━━━━━━━━━━━━━━━
+1. Dashboard login karein aur Settings se apna password badal lein.
+2. Tables tab se QR Standees print karke dining tables par lagayein.
+3. Waiters ke mobile me Waiter App open karke table service shuru karein!
+
+📞 24/7 Founder Helpline: +91 98765 43210
+ScanBite Partner Support Team 🇮🇳`;
+    }
+
+    if (template === "reset") {
+      return `🔒 Security Update - ScanBite
+
+Namaste ${name} ji,
+Aapke restaurant "${restName}" ka ScanBite Dashboard password successfully update/reset kar diya gaya hai.
+
+━━━━━━━━━━━━━━━━━━━━
+🔐 AAPKE NAYE CREDENTIALS:
+━━━━━━━━━━━━━━━━━━━━
+🌐 Dashboard Login:
+${origin}/dashboard?slug=${slug}
+👤 ID/Slug: ${slug}
+🔑 Naya Password: ${passwordDisplay}
+🛎️ Staff 4-Digit PIN: ${pin}
+
+📱 Live Menu: ${origin}/r/${slug}/t/1
+🛎️ Waiter App: ${origin}/waiter?slug=${slug}
+
+⚠️ Note: Kripya login karne ke baad apna password surakshit jagah note kar lein.
+
+📞 Support: +91 98765 43210
+ScanBite Security Team`;
+    }
+
+    // Renewal Template
+    const expiryFormatted = rest.planExpiresAt
+      ? new Date(rest.planExpiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      : "Active / Lifetime Plan";
+
+    return `📅 ScanBite Subscription Notice
+
+Namaste ${name} ji!
+Aapke restaurant "${restName}" ka ScanBite Digital QR Menu plan status:
+
+━━━━━━━━━━━━━━━━━━━━
+📊 SUBSCRIPTION SUMMARY:
+━━━━━━━━━━━━━━━━━━━━
+🏷️ Active Plan: ${rest.plan.toUpperCase()}
+🗓️ Renewal / Expiry Date: ${expiryFormatted}
+🌐 Dashboard Access:
+${origin}/dashboard?slug=${slug}
+
+Aapka digital QR menu aur KDS service seamlessly active hai. Plan upgrade ya renewal ke liye founder support par sampark karein.
+
+📞 Support & Billing: +91 98765 43210
+ScanBite Billing Operations`;
+  };
+
+  const handleCopyCredsMessage = (text: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setIsCredsCopied(true);
+      showToast("📋 Credentials message copied to clipboard!");
+      setTimeout(() => setIsCredsCopied(false), 3000);
+    }
   };
 
   // Save Credentials
@@ -1659,6 +1787,18 @@ export default function SuperAdminDashboard() {
                                 <ShieldCheck className="w-3.5 h-3.5" />
                               </button>
 
+                              {/* WhatsApp Dispatch Kit */}
+                              <button
+                                onClick={() => {
+                                  handleOpenCredsModal(rest);
+                                  setCredsTemplate("welcome");
+                                }}
+                                className="p-2 bg-slate-950 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 rounded-xl border border-slate-800 text-xs font-bold transition shadow-sm"
+                                title="Share Login Links & Credentials on WhatsApp"
+                              >
+                                <span className="text-xs">💬</span>
+                              </button>
+
                               {/* Plan Switcher & Renewal */}
                               <button
                                 onClick={() => {
@@ -2590,7 +2730,7 @@ export default function SuperAdminDashboard() {
       {/* ================= MODAL 3: CREDENTIALS & SECURITY MANAGEMENT ================= */}
       {isCredsModalOpen && selectedRestForCreds && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-xl w-full p-6 shadow-2xl relative space-y-4 max-h-[92vh] overflow-y-auto no-scrollbar">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-amber-400" />
@@ -2698,51 +2838,129 @@ export default function SuperAdminDashboard() {
                 </p>
               </div>
 
-              {/* WhatsApp Share & Actions */}
+              {/* ================= 📲 WHATSAPP COMMUNICATIONS DISPATCH KIT ================= */}
               {(() => {
                 const sharePhone = (credsPhone || selectedRestForCreds.phone || "").replace(/\D/g, "").replace(/^0+/, "");
                 const waPhone = sharePhone.startsWith("91") && sharePhone.length === 12
                   ? sharePhone
                   : `91${sharePhone.length >= 10 ? sharePhone.slice(-10) : sharePhone}`;
 
-                const currentPasswordHint = credsPassword.trim() ? credsPassword.trim() : "(Your chosen secure password)";
-                const waText = `👋 Namaste ${credsOwnerName || selectedRestForCreds.name} ji!\n\nAapka ScanBite QR Digital Menu Portal ready hai:\n\n🌐 Dashboard Login: https://scanbite-plum.vercel.app/dashboard?slug=${selectedRestForCreds.slug}\n🔑 Password: ${currentPasswordHint}\n🛎️ Staff/Waiter PIN: ${credsStaffPin || "••••"}\n\n📱 Customer QR Menu Link:\nhttps://scanbite-plum.vercel.app/r/${selectedRestForCreds.slug}/t/1\n\n(Note: Aap dashboard me login karke Settings se apna password kabhi bhi badal sakte hain.)\n\nScanBite Platform Support Team`;
+                const fullMessage = getWhatsAppCredsMessage(
+                  credsTemplate,
+                  selectedRestForCreds,
+                  credsOwnerName,
+                  credsPhone,
+                  credsPassword,
+                  credsStaffPin
+                );
 
-                const waShareUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waText)}`;
+                const waShareUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(fullMessage)}`;
 
                 return (
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 border-t border-slate-800">
-                    {sharePhone.length >= 10 ? (
-                      <a
-                        href={waShareUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 hover:text-white rounded-xl text-xs font-bold transition shadow-sm"
-                        title="Send login link and credentials directly to owner on WhatsApp"
-                      >
-                        <span>💬 Share via WhatsApp</span>
-                      </a>
-                    ) : <div />}
+                  <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-3 pt-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">📲</span>
+                        <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                          WhatsApp Dispatch Kit
+                        </h4>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded-full">
+                        {credsTemplate === "welcome" ? "🌟 Onboarding Kit" : credsTemplate === "reset" ? "🔑 Password Reset" : "⏳ Plan Status"}
+                      </span>
+                    </div>
 
-                    <div className="flex items-center justify-end gap-3">
+                    {/* Template Pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                      {[
+                        { id: "welcome", label: "🌟 Welcome Kit" },
+                        { id: "reset", label: "🔑 Password Reset" },
+                        { id: "renewal", label: "⏳ Plan Renewal" },
+                      ].map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setCredsTemplate(t.id as any)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                            credsTemplate === t.id
+                              ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30 font-black"
+                              : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-white"
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Live Preview of formatted WhatsApp message */}
+                    <div className="relative">
+                      <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-3 text-[11px] text-slate-300 font-mono whitespace-pre-wrap max-h-44 overflow-y-auto leading-relaxed selection:bg-emerald-500 selection:text-slate-950">
+                        {fullMessage}
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setIsCredsModalOpen(false)}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                        onClick={() => handleCopyCredsMessage(fullMessage)}
+                        className="absolute top-2 right-2 px-2.5 py-1 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-[10px] font-bold rounded-lg border border-slate-700 flex items-center gap-1 shadow transition"
+                        title="Copy message to clipboard"
                       >
-                        Cancel
+                        {isCredsCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{isCredsCopied ? "Copied!" : "Copy"}</span>
                       </button>
-                      <button
-                        type="submit"
-                        disabled={isSavingCreds}
-                        className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/30 transition active:scale-95 disabled:opacity-50"
-                      >
-                        {isSavingCreds ? "Saving..." : "Save Credentials"}
-                      </button>
+                    </div>
+
+                    {/* Dispatch Buttons */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                        <span>Owner Phone:</span>
+                        <span className="text-emerald-400 font-bold">
+                          {waPhone.length >= 10 ? `+${waPhone}` : "(Missing Phone)"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCredsMessage(fullMessage)}
+                          className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold rounded-xl transition active:scale-95"
+                        >
+                          {isCredsCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{isCredsCopied ? "✓ Copied!" : "Copy Message"}</span>
+                        </button>
+
+                        {waPhone.length >= 10 && (
+                          <a
+                            href={waShareUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/30 transition active:scale-95"
+                            title="Send ready-made WhatsApp message to owner"
+                          >
+                            <span>💬 Send on WhatsApp</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })()}
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsCredsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCreds}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/30 transition active:scale-95 disabled:opacity-50"
+                >
+                  {isSavingCreds ? "Saving..." : "Save Credentials"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
