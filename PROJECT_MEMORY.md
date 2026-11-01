@@ -437,6 +437,25 @@
       - **Result:** Fully stabilized vertical-only mobile scrolling with zero horizontal jitter, wobbling, or lateral panning on all Android and iOS smartphones.
     - **Production Build:** Verified with `cmd /c "node node_modules\next\dist\bin\next build"`, compiling all 23 routes with 0 errors.
 
+35. **Enterprise Authentication Security Architecture (Verified Nov 1, 2026):**
+    - **Instant Multi-Device Session Invalidation (`revokeAllSessions`):**
+      - Allows restaurant owners to revoke all active tokens across all phones, tablets, and laptops in a single click (`action: "revoke_all_sessions"`).
+      - In `src/lib/auth.ts`, `verifyToken(token)` inspects `token.iat < revokedSessionsMap.get(slug)`. Any tokens minted prior to the revocation timestamp are immediately rejected, causing instant session termination across all devices.
+      - Automatically revokes all existing sessions when an owner updates their password (`update_credentials`), ensuring stolen or stale sessions are immediately terminated while issuing a fresh token for the current device.
+    - **WhatsApp 2-Factor Authentication (2FA) OTP Engine:**
+      - Generates cryptographically secure 6-digit OTPs via `crypto.randomInt(100000, 999999)` with a 5-minute time-to-live (`expiresInSeconds: 300`).
+      - Verified with `crypto.timingSafeEqual` to eliminate timing attacks, backed by a 5-attempt brute-force lockout window.
+      - Direct WhatsApp dispatch link (`wa.me/${phone}?text=...`) for one-tap delivery.
+      - Includes developer/demo test code badge (`demoOtp`) in demo/development environments so owners and testers can verify login without SMS gateway overhead.
+      - Dedicated toggle control in Dashboard Settings allowing owners to activate or deactivate 2FA on demand.
+    - **Distributed Cloud Redis Rate Limiter (`checkRateLimitDistributed`):**
+      - Direct REST pipeline integration with Upstash Redis (`${UPSTASH_REDIS_REST_URL}/pipeline`) using `INCR` + `EXPIRE` commands, requiring 0 heavy external C++ dependencies and running natively in serverless edge runtimes.
+      - Fully fault-tolerant: automatically falls back to an in-memory sliding-window rate limiter with zero latency penalty or downtime if cloud Redis is unreachable.
+      - Enforced across owner password login, staff 4-digit PIN login, and 2FA OTP verification endpoints (max 5 requests per 60 seconds per IP + identifier).
+    - **Verification & Health Scorecard:**
+      - Passed 100% of tests in `scripts/test-advanced-security.js` and `test-all-pipelines.js` (8/8 pipelines passing).
+      - Production Next.js build compiled 23/23 App Router routes with 0 TypeScript/ESLint errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

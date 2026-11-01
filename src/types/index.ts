@@ -192,6 +192,8 @@ export type AuthUser = {
   staffName?: string;
   staffRole?: string;
   permissions?: StaffPermissions;
+  tokenVersion?: number;
+  twoFactorEnabled?: boolean;
 };
 
 export type SuperAdminMetrics = {

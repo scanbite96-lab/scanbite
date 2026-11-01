@@ -17,6 +17,28 @@ export function signToken(payload: AuthUser): string {
   return `${data}.${signature}`;
 }
 
+// Multi-device session revocation map (slug -> minimum valid issued-at timestamp in seconds)
+const revokedSessionsMap = new Map<string, number>();
+
+/**
+ * Instantly revokes all active sessions for a restaurant slug across all devices.
+ * Any tokens minted before this timestamp will immediately fail authentication.
+ */
+export function revokeAllSessions(slugOrId: string): void {
+  const clean = String(slugOrId).trim().toLowerCase();
+  revokedSessionsMap.set(clean, Math.floor(Date.now() / 1000));
+}
+
+/**
+ * Checks whether a session token has been revoked by a logout-all-devices action or password reset.
+ */
+export function isSessionRevoked(slugOrId?: string | null, tokenIat?: number): boolean {
+  if (!slugOrId || !tokenIat) return false;
+  const revokedAt = revokedSessionsMap.get(String(slugOrId).trim().toLowerCase());
+  if (!revokedAt) return false;
+  return tokenIat < revokedAt;
+}
+
 export function verifyToken(token: string): AuthUser | null {
   try {
     const [data, signature] = token.split(".");
@@ -30,9 +52,13 @@ export function verifyToken(token: string): AuthUser | null {
       return null;
     }
 
-    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf8")) as AuthUser & { exp?: number };
+    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf8")) as AuthUser & { exp?: number; iat?: number };
     // Check token expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+    // Check instant multi-device revocation
+    if (payload.iat && isSessionRevoked(payload.slug, payload.iat)) {
       return null;
     }
     return payload;
@@ -181,4 +207,160 @@ export function getClientIp(request: NextRequest): string {
     return forwarded.split(",")[0].trim();
   }
   return request.headers.get("x-real-ip") || "127.0.0.1";
+}
+
+// -------------------------------------------------------------
+// WHATSAPP 2-FACTOR AUTHENTICATION (2FA) OTP ENGINE
+// -------------------------------------------------------------
+interface TwoFactorOtpRecord {
+  otp: string;
+  expiresAt: number;
+  phone: string;
+  attempts: number;
+}
+
+const twoFactorStore = new Map<string, TwoFactorOtpRecord>();
+const twoFactorEnabledRestaurants = new Set<string>();
+
+/**
+ * Checks if WhatsApp 2FA is currently enabled for this restaurant.
+ */
+export function isTwoFactorEnabled(slug?: string | null): boolean {
+  if (!slug) return false;
+  return twoFactorEnabledRestaurants.has(String(slug).trim().toLowerCase());
+}
+
+/**
+ * Activates or deactivates WhatsApp 2FA for a restaurant.
+ */
+export function setTwoFactorEnabled(slug: string, enabled: boolean): void {
+  const clean = String(slug).trim().toLowerCase();
+  if (enabled) {
+    twoFactorEnabledRestaurants.add(clean);
+  } else {
+    twoFactorEnabledRestaurants.delete(clean);
+  }
+}
+
+/**
+ * Generates a cryptographically random 6-digit OTP for WhatsApp 2FA verification.
+ * Valid for 5 minutes (300 seconds).
+ */
+export function generate2FaOtp(identifier: string, phone: string): { otp: string; expiresInSeconds: number; phoneMasked: string } {
+  const cleanId = String(identifier).trim().toLowerCase();
+  const cleanPhone = String(phone).replace(/\D/g, "");
+
+  // Clean expired OTP records periodically
+  const now = Date.now();
+  if (twoFactorStore.size > 1000) {
+    twoFactorStore.forEach((v, k) => {
+      if (v.expiresAt < now) twoFactorStore.delete(k);
+    });
+  }
+
+  // Generate 6-digit random code
+  const otp = String(crypto.randomInt(100000, 999999));
+  const expiresInSeconds = 300; // 5 minutes
+
+  twoFactorStore.set(cleanId, {
+    otp,
+    expiresAt: now + expiresInSeconds * 1000,
+    phone: cleanPhone,
+    attempts: 0,
+  });
+
+  const phoneMasked = cleanPhone.length >= 4
+    ? `${"*".repeat(Math.max(0, cleanPhone.length - 4))}${cleanPhone.slice(-4)}`
+    : "******";
+
+  return { otp, expiresInSeconds, phoneMasked };
+}
+
+/**
+ * Verifies a 6-digit 2FA OTP with constant-time comparison and brute-force attempt limits.
+ */
+export function verify2FaOtp(identifier: string, inputOtp: string): { valid: boolean; error?: string } {
+  const cleanId = String(identifier).trim().toLowerCase();
+  const cleanInput = String(inputOtp).trim();
+  const record = twoFactorStore.get(cleanId);
+
+  if (!record) {
+    return { valid: false, error: "OTP has expired or was not requested. Please request a new code." };
+  }
+
+  if (Date.now() > record.expiresAt) {
+    twoFactorStore.delete(cleanId);
+    return { valid: false, error: "OTP has expired. Please request a new security code." };
+  }
+
+  if (record.attempts >= 5) {
+    twoFactorStore.delete(cleanId);
+    return { valid: false, error: "Too many incorrect OTP attempts. Please start over." };
+  }
+
+  record.attempts += 1;
+
+  // Constant-time comparison
+  const inputBuf = Buffer.from(cleanInput, "utf8");
+  const storedBuf = Buffer.from(record.otp, "utf8");
+  const isValid = inputBuf.length === storedBuf.length && crypto.timingSafeEqual(inputBuf, storedBuf);
+
+  if (isValid) {
+    twoFactorStore.delete(cleanId);
+    return { valid: true };
+  }
+
+  return { 
+    valid: false, 
+    error: `Incorrect OTP code. ${Math.max(0, 5 - record.attempts)} attempts remaining.` 
+  };
+}
+
+// -------------------------------------------------------------
+// DISTRIBUTED CLOUD REDIS RATE LIMITER (UPSTASH REST + LOCAL MEMORY FALLBACK)
+// -------------------------------------------------------------
+/**
+ * Hybrid Distributed Rate Limiter:
+ * - If UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are configured, utilizes global distributed Upstash Redis.
+ * - Always falls back instantly to local sliding-window in-memory limiter with zero latency penalty or downtime.
+ */
+export async function checkRateLimitDistributed(
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; remaining: number; retryAfterSeconds: number; source: "redis" | "memory" }> {
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (redisUrl && redisToken) {
+    try {
+      const redisKey = `scanbite:ratelimit:${key}`;
+      const response = await fetch(`${redisUrl}/pipeline`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${redisToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([
+          ["INCR", redisKey],
+          ["EXPIRE", redisKey, windowSeconds],
+        ]),
+        signal: AbortSignal.timeout(1500), // Strict 1.5s timeout
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const currentCount = Number(data[0]?.result || 1);
+        if (currentCount > maxRequests) {
+          return { allowed: false, remaining: 0, retryAfterSeconds: windowSeconds, source: "redis" };
+        }
+        return { allowed: true, remaining: maxRequests - currentCount, retryAfterSeconds: 0, source: "redis" };
+      }
+    } catch {
+      // Redis offline/unreachable: silent fallback to memory rate limiter
+    }
+  }
+
+  const mem = checkRateLimit(key, maxRequests, windowSeconds);
+  return { ...mem, source: "memory" };
 }

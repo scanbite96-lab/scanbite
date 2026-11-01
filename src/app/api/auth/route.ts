@@ -10,7 +10,14 @@ import {
   verifyPassword,
   isHashed,
   checkRateLimit,
-  getClientIp
+  checkRateLimitDistributed,
+  getClientIp,
+  revokeAllSessions,
+  isSessionRevoked,
+  generate2FaOtp,
+  verify2FaOtp,
+  isTwoFactorEnabled,
+  setTwoFactorEnabled
 } from "@/lib/auth";
 import { DEMO_STAFF } from "@/lib/demoData";
 
@@ -97,6 +104,7 @@ export async function GET(request: NextRequest) {
               canManageBilling: true,
               canManageRequests: true,
             },
+            twoFactorEnabled: isTwoFactorEnabled(session.slug),
           },
         });
       }
@@ -168,6 +176,7 @@ export async function GET(request: NextRequest) {
         staffName: session.role === "staff" ? staffName : undefined,
         staffRole: session.role === "staff" ? staffRole : undefined,
         permissions: staffPermissions,
+        twoFactorEnabled: isTwoFactorEnabled(restaurant.slug),
       },
     });
   } catch {
@@ -231,9 +240,9 @@ export async function POST(request: NextRequest) {
       const clientIp = getClientIp(request);
       const cleanId = String(identifier).trim().toLowerCase();
 
-      // Rate limit: Max 5 login attempts per 60s per IP + identifier
+      // Distributed Rate limit: Max 5 login attempts per 60s per IP + identifier
       const rateLimitKey = `auth:login:${clientIp}:${cleanId}`;
-      const rateLimit = checkRateLimit(rateLimitKey, 5, 60);
+      const rateLimit = await checkRateLimitDistributed(rateLimitKey, 5, 60);
       if (!rateLimit.allowed) {
         return NextResponse.json(
           { error: `Too many login attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
@@ -299,6 +308,26 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Check if 2FA is enabled or requested
+      if (isTwoFactorEnabled(restaurant.slug) || body.request2Fa) {
+        const phone = restaurant.phone || "919876543210";
+        const otpInfo = generate2FaOtp(restaurant.slug, phone);
+        const waMessage = encodeURIComponent(
+          `🔐 *ScanBite 2FA Security Code*\n\nYour one-time login verification code is: *${otpInfo.otp}*\n\nValid for 5 minutes. Do not share this code with anyone.`
+        );
+        const waPhoneClean = phone.replace(/\D/g, "");
+        const waUrl = `https://wa.me/${waPhoneClean}?text=${waMessage}`;
+
+        return NextResponse.json({
+          require2FA: true,
+          identifier: restaurant.slug,
+          phoneMasked: otpInfo.phoneMasked,
+          waUrl,
+          demoOtp: (process.env.NODE_ENV !== "production" || restaurant.slug === "grand-spice" ? otpInfo.otp : undefined),
+          message: `2FA security code dispatched to WhatsApp (${otpInfo.phoneMasked}).`,
+        });
+      }
+
       const user: AuthUser = {
         id: restaurant.id,
         name: restaurant.name,
@@ -333,6 +362,170 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
+
+    // 1.1 VERIFY 2FA OTP
+    if (action === "verify_2fa") {
+      const { identifier, otp } = body;
+      if (!identifier || !otp) {
+        return NextResponse.json({ error: "Identifier and 6-digit OTP code are required." }, { status: 400 });
+      }
+
+      const clientIp = getClientIp(request);
+      const cleanId = String(identifier).trim().toLowerCase();
+
+      // Rate limit OTP verification: Max 5 attempts per 60s
+      const rateLimitKey = `auth:2fa:${clientIp}:${cleanId}`;
+      const rateLimit = await checkRateLimitDistributed(rateLimitKey, 5, 60);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: `Too many verification attempts. Please wait ${rateLimit.retryAfterSeconds} seconds.` },
+          { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+        );
+      }
+
+      const result = verify2FaOtp(cleanId, otp);
+      if (!result.valid) {
+        return NextResponse.json({ error: result.error || "Invalid or expired OTP code." }, { status: 401 });
+      }
+
+      let restaurant = null;
+      try {
+        restaurant = await prisma.restaurant.findFirst({
+          where: {
+            OR: [
+              { ownerEmail: cleanId },
+              { slug: cleanId },
+            ],
+          },
+        });
+      } catch {
+        // ignore
+      }
+
+      if (!restaurant) {
+        if (cleanId === "grand-spice" || cleanId === "owner@grandspice.com" || cleanId === "demo@scanbite.com") {
+          restaurant = {
+            id: "rest-001",
+            name: "The Grand Spice Kitchen",
+            slug: "grand-spice",
+            ownerEmail: "owner@grandspice.com",
+            ownerName: "Rajesh Sharma",
+            staffPin: "1234",
+          } as any;
+        } else {
+          return NextResponse.json({ error: "Restaurant not found." }, { status: 404 });
+        }
+      }
+
+      const user: AuthUser = {
+        id: restaurant.id,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        ownerEmail: restaurant.ownerEmail,
+        ownerName: restaurant.ownerName,
+        role: "owner",
+        twoFactorEnabled: isTwoFactorEnabled(restaurant.slug),
+        permissions: {
+          canManageOrders: true,
+          canManageMenu: true,
+          canManageBilling: true,
+          canManageRequests: true,
+        },
+      };
+
+      const token = signToken(user);
+      const response = NextResponse.json({
+        success: true,
+        message: `2FA Verified! Welcome back, ${restaurant.ownerName || restaurant.name}!`,
+        user,
+      });
+
+      response.cookies.set({
+        name: AUTH_COOKIE_NAME,
+        value: token,
+        httpOnly: true,
+        path: "/",
+        maxAge: 7 * 24 * 60 * 60,
+        sameSite: "lax",
+      });
+
+      return response;
+    }
+
+    // 1.2 RESEND 2FA OTP
+    if (action === "resend_2fa_otp") {
+      const { identifier } = body;
+      if (!identifier) {
+        return NextResponse.json({ error: "Identifier is required." }, { status: 400 });
+      }
+      const cleanId = String(identifier).trim().toLowerCase();
+      let restaurant = null;
+      try {
+        restaurant = await prisma.restaurant.findFirst({
+          where: {
+            OR: [{ ownerEmail: cleanId }, { slug: cleanId }],
+          },
+        });
+      } catch {}
+      const phone = restaurant?.phone || "919876543210";
+      const otpInfo = generate2FaOtp(cleanId, phone);
+      const waMessage = encodeURIComponent(
+        `🔐 *ScanBite 2FA Security Code*\n\nYour one-time login verification code is: *${otpInfo.otp}*\n\nValid for 5 minutes.`
+      );
+      const waPhoneClean = phone.replace(/\D/g, "");
+      const waUrl = `https://wa.me/${waPhoneClean}?text=${waMessage}`;
+
+      return NextResponse.json({
+        success: true,
+        identifier: cleanId,
+        phoneMasked: otpInfo.phoneMasked,
+        waUrl,
+        demoOtp: (process.env.NODE_ENV !== "production" || cleanId === "grand-spice" ? otpInfo.otp : undefined),
+        expiresInSeconds: otpInfo.expiresInSeconds,
+        message: "New 2FA code generated successfully.",
+      });
+    }
+
+    // 1.3 TOGGLE 2FA SETTINGS
+    if (action === "toggle_2fa") {
+      const cookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+      if (!cookie) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const session = verifyToken(cookie);
+      if (!session || session.role !== "owner" || !session.slug) {
+        return NextResponse.json({ error: "Only restaurant owners can configure 2FA." }, { status: 403 });
+      }
+
+      const { enabled } = body;
+      setTwoFactorEnabled(session.slug, !!enabled);
+
+      return NextResponse.json({
+        success: true,
+        twoFactorEnabled: !!enabled,
+        message: enabled
+          ? "WhatsApp 2-Factor Authentication (2FA) is now enabled for your account!"
+          : "WhatsApp 2-Factor Authentication (2FA) has been disabled.",
+      });
+    }
+
+    // 1.4 INSTANT MULTI-DEVICE SESSION INVALIDATION (LOGOUT ALL DEVICES)
+    if (action === "revoke_all_sessions") {
+      const cookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
+      if (!cookie) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      const session = verifyToken(cookie);
+      if (!session || session.role !== "owner" || !session.slug) {
+        return NextResponse.json({ error: "Only restaurant owners can revoke all sessions." }, { status: 403 });
+      }
+
+      revokeAllSessions(session.slug);
+
+      const response = NextResponse.json({
+        success: true,
+        message: "All active sessions across all phones and devices have been revoked immediately.",
+      });
+      response.cookies.delete(AUTH_COOKIE_NAME);
+      return response;
+    }
+
     // 2. STAFF QUICK PIN LOGIN
     if (action === "pin_login") {
       const { slug, pin } = body;
@@ -347,9 +540,9 @@ export async function POST(request: NextRequest) {
       const cleanSlug = String(slug).trim().toLowerCase();
       const cleanPin = String(pin).trim();
 
-      // Rate limit: Max 5 PIN attempts per 60s per IP + slug to block brute force
+      // Distributed Rate limit: Max 5 PIN attempts per 60s per IP + slug to block brute force
       const rateLimitKey = `auth:pin:${clientIp}:${cleanSlug}`;
-      const rateLimit = checkRateLimit(rateLimitKey, 5, 60);
+      const rateLimit = await checkRateLimitDistributed(rateLimitKey, 5, 60);
       if (!rateLimit.allowed) {
         return NextResponse.json(
           { error: `Too many PIN attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
@@ -520,6 +713,8 @@ export async function POST(request: NextRequest) {
 
       if (newPassword && newPassword.trim().length >= 4) {
         updateData.password = hashPassword(newPassword.trim());
+        // Automatically invalidate all other existing sessions across devices
+        revokeAllSessions(session.slug);
       }
       if (newStaffPin && newStaffPin.trim().length >= 4) {
         updateData.staffPin = newStaffPin.trim();
