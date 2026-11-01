@@ -311,6 +311,16 @@
       - Batch-updated all matching inquiries to `converted`. Active fleet in Neon DB expanded to 4 live tenants.
     - **Zero-Regression Verification:** Full production Next.js build (`cmd /c "npm run build"`) compiled 100% of pages (23/23 routes) with 0 errors.
 
+29. **WhatsApp Credentials Communications Suite & Fleet Dispatch Integration (`/founder-hq`) (Verified Nov 1, 2026):**
+    - **Multi-Template WhatsApp Dispatch Kit:** Built an interactive communications kit inside the `Access & Credentials` modal (`isCredsModalOpen`) supporting 3 specialized messaging templates:
+      1. 🌟 **Welcome Kit (स्वागत किट):** Full onboarding suite including Owner Dashboard URL, Restaurant ID/Slug, initial Password, Staff PIN, direct Customer QR Menu link, dedicated Waiter & Captain Mode URL (`/waiter?slug=...`), direct Kitchen KDS Screen URL (`/dashboard?tab=kds`), Table QR Standees Kit URL, 3-step quick start guide, and 24/7 Founder Helpline.
+      2. 🔑 **Password Reset Alert:** Targeted notification dispatched when credentials are reset, containing updated login credentials, direct dashboard link, and safety instructions.
+      3. ⏳ **Plan Renewal & Status Reminder:** Clear overview of active SaaS plan, expiry/renewal date, dashboard link, and upgrade/billing contact information.
+    - **Real-Time Live Preview & Instant Clipboard Copy:** Added an in-modal monospace preview card showing the exact message format and a 1-click `📋 Copy Message` button that copies the formatted text to clipboard with `isCredsCopied` visual feedback.
+    - **1-Click WhatsApp Direct Dispatch (`wa.me`):** Pre-fills the recipient owner phone number (sanitized to 10-digit E.164 with +91 country prefix) and launches WhatsApp Web / mobile app with the complete encoded message.
+    - **Fleet List Quick Dispatch Button:** Added a dedicated `💬` WhatsApp button on every restaurant row in the "Restaurants Fleet" table, allowing the Super Admin to open credentials and dispatch messages with a single tap.
+    - **Verification & Deployment:** 100% TypeScript verification passed (`tsc --noEmit`), code committed and deployed to Vercel production (`scanbite-plum.vercel.app`).
+
 26. **Super Admin Command Center (`/founder-hq`) Multi-Bug Forensic Audit & Operational Hardening (Verified Nov 1, 2026):**
     - **IST Financial Calculation Accuracy (`src/lib/store.ts`):** Grounded "Today's Orders" and "Today's GMV" calculation strictly in `timeZone: "Asia/Kolkata"`. Previously, Vercel serverless UTC midnight truncated Indian orders placed between 12:00 AM and 5:30 AM IST.
     - **Active SaaS MRR Calculation (`src/lib/store.ts`):** Excluded suspended accounts from recurring revenue projections (`activePlanBreakdown`), ensuring MRR strictly reflects paying, active restaurant partners.
