@@ -335,7 +335,8 @@ export default function CustomerTableMenu() {
   // Generate WhatsApp Bill Receipt Link
   const generateWhatsAppBillUri = (ord: Order) => {
     if (!restaurant) return "#";
-    const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
+    const rawDigits = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
+    const phone = rawDigits.length >= 10 ? rawDigits.slice(-10) : "";
     const itemsList = (ord.items || []).map((it) => {
       const variantStr = it.variantName ? ` [${it.variantName}]` : "";
       const addonsStr = it.selectedAddons && it.selectedAddons.length > 0
@@ -979,7 +980,7 @@ export default function CustomerTableMenu() {
               c.selectedAddons && Array.isArray(c.selectedAddons) && c.selectedAddons.length > 0
                 ? (c.selectedAddons as any[]).map((a) => ({ name: a.name, price: a.price }))
                 : undefined,
-            orderedByName: c.dinerName || dinerName || "Guest",
+            orderedByName: (c.dinerId === dinerId && dinerName.trim()) ? dinerName.trim() : (c.dinerName || dinerName.trim() || "Guest"),
           }))
         : cartItems.map((c) => ({
             menuItemId: c.item.id,
@@ -993,7 +994,7 @@ export default function CustomerTableMenu() {
               c.selectedAddons && c.selectedAddons.length > 0
                 ? c.selectedAddons.map((a) => ({ name: a.name, price: a.price }))
                 : undefined,
-            orderedByName: dinerName || customerName || "Guest",
+            orderedByName: dinerName.trim() || customerName.trim() || "Guest",
           }));
 
       const res = await fetch("/api/orders", {
@@ -2093,10 +2094,23 @@ export default function CustomerTableMenu() {
                 </div>
 
                 {appliedCoupon && (
-                  <p className="text-[10px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>Coupon <strong>{appliedCoupon.code}</strong> applied (-{restaurant.currencySymbol}{discountAmount})</span>
-                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-emerald-600 font-bold mt-1.5">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      <span>Coupon <strong>{appliedCoupon.code}</strong> applied (-{restaurant.currencySymbol}{discountAmount})</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedCoupon(null);
+                        setCouponInput("");
+                        showToast(lang === "hi" ? "कूपन हटा दिया गया" : "Coupon removed");
+                      }}
+                      className="text-slate-400 hover:text-red-500 font-semibold underline ml-2 transition"
+                    >
+                      {lang === "hi" ? "हटाएं" : "Remove"}
+                    </button>
+                  </div>
                 )}
                 {couponError && <p className="text-[10px] text-red-500 font-medium mt-1">{couponError}</p>}
               </div>
@@ -2241,7 +2255,7 @@ export default function CustomerTableMenu() {
                 <p className="text-xs text-slate-500">{t.realTimeStatus}</p>
               </div>
               <div className="flex items-center gap-2">
-                {tableOrders.some((o) => o.status === "served" || o.status === "completed" || o.paymentStatus === "paid") && (
+                {tableOrders.length > 0 && (
                   <button
                     onClick={handleResetTableSession}
                     title="Start fresh session / vacate table"
@@ -2263,8 +2277,12 @@ export default function CustomerTableMenu() {
               {tableOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <Clock className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                  <p className="font-bold text-slate-700 text-sm">No active orders yet</p>
-                  <p className="text-xs text-slate-400 mt-1">Browse the menu and place your first delicious dish!</p>
+                  <p className="font-bold text-slate-700 text-sm">
+                    {lang === "hi" ? "वर्तमान में कोई सक्रिय ऑर्डर नहीं है" : "No active orders yet"}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {lang === "hi" ? "स्वादिष्ट व्यंजन चुनें और अपना पहला ऑर्डर दें!" : "Browse the menu and place your first delicious dish!"}
+                  </p>
                 </div>
               ) : (
                 tableOrders.map((order) => {
@@ -2501,7 +2519,7 @@ export default function CustomerTableMenu() {
                 onClick={() => setIsOrdersOpen(false)}
                 className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition"
               >
-                Close
+                {lang === "hi" ? "बंद करें" : "Close"}
               </button>
             </div>
           </div>
@@ -2903,7 +2921,8 @@ function OrderUpiBox({
     const name = encodeURIComponent(restaurant.name);
     const tableTag = encodeURIComponent(tableNumber || order.tableNumber || "Table");
     const amountStr = Number(amountToPay).toFixed(2);
-    return `upi://pay?pa=${vpa}&pn=${name}&am=${amountStr}&cu=INR&tn=Bill%20Order%20${order.id.slice(-4)}%20${tableTag}%20(${encodeURIComponent(noteLabel)})`;
+    const noteText = `Bill Order #${order.id.slice(-4)} ${tableNumber || order.tableNumber || "Table"} (${noteLabel})`;
+    return `upi://pay?pa=${vpa}&pn=${name}&am=${amountStr}&cu=INR&tn=${encodeURIComponent(noteText)}`;
   }, [restaurant, order, tableNumber, amountToPay, noteLabel]);
 
   useEffect(() => {

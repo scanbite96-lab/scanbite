@@ -352,6 +352,29 @@
     - **Hero Demo Buttons Cleanup:** Eliminated duplicate emoji rendering (`📱` and `🍳`) inside the button labels that clashed with the existing Lucide SVG `<Smartphone />` and `<ChefHat />` icons.
     - **Full Bilingual Footer & ROI Calculator Polish:** Translated dynamic ROI calculator units (Tables, Seatings / Day, Staff Hours Saved) and footer product demo & core features links into natural Hindi when language is set to `hi`.
 
+30. **24x7 Partner Support & Emergency Helpline Desk in Owner Dashboard (Verified Nov 1, 2026):**
+    - **Dashboard Header Integration:** Added a prominent `🎧 24x7 Helpline` button in the dashboard top navigation bar for instant access by restaurant owners and kitchen managers.
+    - **Floating Emergency SOS Pill:** Added an elegant, non-intrusive floating `🎧 24x7 Helpline • 📞 98765 43210` pill in the bottom-left corner of the dashboard across all operational views.
+    - **Interactive Emergency Help Desk Modal:**
+      1. **Priority WhatsApp SOS (1-Tap):** Pre-fills restaurant name, slug, owner name, and phone into WhatsApp chat (`+91 98765 43210`) with ~2-minute response target.
+      2. **Direct Phone Call Helpline (1-Tap):** Direct call to official helpline `tel:+919876543210`.
+      3. **Instant Support Ticket Logging (`POST /api/inquiries`):** Direct submission form where owners categorize issues (Sound alert, QR print, Waiter app, UPI payments, Menu updates, KDS freeze) and write notes. Automatically dispatched to Neon PostgreSQL and immediately visible in `/founder-hq` with emergency priority.
+      4. **10-Second Quick Troubleshooters:** 4 interactive self-help cards (1-click Test Sound, 1-click Copy Waiter Link, 1-click jump to Settings for UPI VPA, 1-click jump to Tables for fresh QR standees).
+    - **Settings & PIN Tab Integration:** Added an official Partner Support Card within the Settings view.
+    - **Production Build:** All 23 static & dynamic App Router routes compiled with 0 errors (`cmd /c "npm run build"`).
+
+31. **1-Click Live Demo Access, Back Navigation, and Demo Credentials Auto-Fill (Verified Nov 1, 2026):**
+    - **Resolved Login Wall for Demo Explorers:**
+      - On `/register`, transformed the top action button into a vibrant **"⚡ Explore Demo Dashboard"** (`href="/dashboard?demo=true"`) button. Prospective clients exploring onboarding can now test the live kitchen KDS and owner dashboard instantly without hitting a password barrier.
+      - Preserved secondary `Partner Login` link for registered account holders.
+    - **1-Click Demo Access on `/dashboard` Login Screen:**
+      - Added a prominent, high-contrast **"⚡ Enter Live Demo Restaurant (1-Click Access) — No Password Needed"** banner at the top of the `/dashboard` login page so visitors are never trapped by the authentication wall.
+      - Added an interactive **"💡 Demo Restaurant Credentials"** helper box with a 1-tap **"Auto-Fill Demo Info"** button for both Owner (`grand-spice` / `admin123`) and Staff PIN (`1234`).
+    - **Fixed Broken Back Navigation:**
+      - Added clear, dedicated **"← Back to Website"** buttons to the headers of both `/register` and `/dashboard` (and below the login form) allowing 1-tap return to the marketing home page (`/`).
+      - Added an inline **"← Back to Website"** link directly in the sticky top demo banner on `/dashboard`.
+      - Updated `/login/page.tsx` redirect to use `RedirectType.replace`, completely preventing browser history back-button redirect loops.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

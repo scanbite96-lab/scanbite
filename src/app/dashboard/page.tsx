@@ -71,7 +71,11 @@ import {
   LifeBuoy,
   PhoneCall,
   Send,
-  HelpCircle
+  HelpCircle,
+  ArrowLeft,
+  ArrowRight,
+  Info,
+  Zap
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
@@ -492,6 +496,44 @@ export default function RestaurantDashboard() {
     setLoginPassword("");
     setStaffPinInput("");
     setLoginError(null);
+  };
+
+  // 1-Click Instant Demo Login (Grand Spice) without requiring credentials
+  const handleInstantDemoAccess = async () => {
+    setIsDemoMode(true);
+    setIsLoggingIn(true);
+    try {
+      await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "demo_login" }),
+      });
+    } catch {
+      // fallback
+    }
+    const demoUser: AuthUser = {
+      id: "rest-001",
+      name: "The Grand Spice Kitchen",
+      slug: "grand-spice",
+      ownerEmail: "owner@grandspice.com",
+      ownerName: "Rajesh Sharma",
+      role: "owner",
+      staffPin: "1234",
+      permissions: {
+        canManageOrders: true,
+        canManageMenu: true,
+        canManageBilling: true,
+        canManageRequests: true,
+      },
+    };
+    setAuthUser(demoUser);
+    setRestaurantSlug("grand-spice");
+    setStaffRestaurantSlug("grand-spice");
+    setNewOwnerEmail("owner@grandspice.com");
+    setNewOwnerName("Rajesh Sharma");
+    setActiveTab("kds");
+    setIsLoggingIn(false);
+    setIsAuthLoading(false);
   };
 
   const handleUpdateCredentials = async () => {
@@ -2093,21 +2135,45 @@ export default function RestaurantDashboard() {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-orange-500 selection:text-white">
         {/* Top Header */}
-        <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur py-4 px-6">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center font-black text-white text-sm shadow-md shadow-orange-600/30">
-                ⚡
-              </div>
-              <span className="font-extrabold text-base text-white">ScanBite SaaS</span>
-            </Link>
-            <Link
-              href="/register"
-              className="text-xs font-bold text-orange-400 hover:text-orange-300 transition flex items-center gap-1"
-            >
-              <span>Register New Restaurant</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+        <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur py-3.5 px-4 sm:px-6 sticky top-0 z-40">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link
+                href="/"
+                className="text-xs font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-2 rounded-xl active:scale-95 shadow-sm"
+                title="Return to ScanBite Homepage"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-orange-400" />
+                <span className="hidden min-[480px]:inline">Back to Website</span>
+                <span className="min-[480px]:hidden">Back</span>
+              </Link>
+
+              <Link href="/" className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center font-black text-white text-sm shadow-md shadow-orange-600/30">
+                  ⚡
+                </div>
+                <span className="font-extrabold text-base text-white hidden min-[360px]:inline">ScanBite SaaS</span>
+              </Link>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleInstantDemoAccess}
+                className="text-xs font-black text-white bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 px-3.5 py-2 rounded-xl shadow-md shadow-orange-600/30 transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white shrink-0" />
+                <span>⚡ 1-Click Demo</span>
+              </button>
+
+              <Link
+                href="/register"
+                className="hidden sm:flex text-xs font-bold text-orange-400 hover:text-orange-300 transition items-center gap-1 bg-slate-900 border border-slate-800 hover:border-slate-700 px-3 py-2 rounded-xl"
+              >
+                <span>Register</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </div>
         </header>
 
@@ -2116,11 +2182,40 @@ export default function RestaurantDashboard() {
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl pointer-events-none" />
 
-            <div className="text-center mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-orange-600/10 border border-orange-500/30 text-orange-400 flex items-center justify-center mx-auto mb-3 shadow-inner">
-                <Lock className="w-7 h-7" />
+            {/* 1-Click Instant Demo Exploration Banner */}
+            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-br from-orange-950/70 via-slate-900 to-amber-950/60 border border-orange-500/40 text-center space-y-2.5 shadow-lg shadow-orange-950/40">
+              <div className="flex items-center justify-center gap-1.5 text-orange-400 font-black text-xs uppercase tracking-wider">
+                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                <span>Testing or Exploring? / लाइव डेमो देखें</span>
               </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Partner Login</h1>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                No password needed! Instantly explore the live restaurant dashboard &amp; kitchen KDS with full demo data.
+              </p>
+              <button
+                type="button"
+                onClick={handleInstantDemoAccess}
+                disabled={isLoggingIn}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs sm:text-sm shadow-md shadow-orange-600/40 flex items-center justify-center gap-2 transition active:scale-95"
+              >
+                <Zap className="w-4 h-4 fill-white" />
+                <span>⚡ Enter Live Demo Restaurant (1-Click)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="relative flex items-center justify-center my-6">
+              <div className="border-t border-slate-800 w-full" />
+              <span className="bg-slate-900 px-3 text-[10px] font-bold tracking-widest text-slate-500 uppercase shrink-0">
+                OR SIGN IN WITH ACCOUNT
+              </span>
+              <div className="border-t border-slate-800 w-full" />
+            </div>
+
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-orange-600/10 border border-orange-500/30 text-orange-400 flex items-center justify-center mx-auto mb-2 shadow-inner">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h1 className="text-xl font-black text-white tracking-tight">Partner Login</h1>
               <p className="text-xs text-slate-400 mt-1">
                 Access your restaurant live orders, kitchen display &amp; settings.
               </p>
@@ -2263,14 +2358,27 @@ export default function RestaurantDashboard() {
             )}
           </div>
 
-          <div className="text-center mt-6">
-            <Link
-              href="/register"
-              className="text-xs font-bold text-slate-400 hover:text-white transition inline-flex items-center gap-1"
-            >
-              <span>Want to register a new cafe or restaurant?</span>
-              <span className="text-orange-400 underline">Get started free</span>
-            </Link>
+          {/* Bottom Navigation Links */}
+          <div className="text-center mt-6 space-y-3">
+            <div>
+              <Link
+                href="/register"
+                className="text-xs font-bold text-slate-400 hover:text-white transition inline-flex items-center gap-1"
+              >
+                <span>Want to register a new cafe or restaurant?</span>
+                <span className="text-orange-400 underline">Get started free</span>
+              </Link>
+            </div>
+
+            <div>
+              <Link
+                href="/"
+                className="text-xs font-bold text-slate-400 hover:text-white transition inline-flex items-center gap-1.5 bg-slate-900/60 border border-slate-800 px-3.5 py-1.5 rounded-xl hover:border-slate-700"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-orange-400" />
+                <span>Return to ScanBite Homepage / मुख्य वेबसाइट पर जाएं</span>
+              </Link>
+            </div>
           </div>
         </main>
 
@@ -2321,12 +2429,20 @@ export default function RestaurantDashboard() {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="text-[11px] sm:text-xs">🌟 ScanBite Interactive Demo Mode (Grand Spice) • Try advancing orders, managing stock & kitchen!</span>
             </div>
-            <Link
-              href="/register"
-              className="bg-white text-slate-950 hover:bg-slate-100 px-2.5 py-0.5 rounded-lg text-[11px] font-black transition shrink-0 shadow-xs"
-            >
-              Get ScanBite For Your Restaurant →
-            </Link>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Link
+                href="/"
+                className="text-orange-100 hover:text-white px-2 py-0.5 rounded-lg text-[11px] font-semibold transition shrink-0 underline"
+              >
+                ← Back to Website
+              </Link>
+              <Link
+                href="/register"
+                className="bg-white text-slate-950 hover:bg-slate-100 px-2.5 py-0.5 rounded-lg text-[11px] font-black transition shrink-0 shadow-xs"
+              >
+                Get ScanBite For Your Restaurant →
+              </Link>
+            </div>
           </div>
         )}
 
