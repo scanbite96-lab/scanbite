@@ -404,6 +404,22 @@
       - Added 1-tap `(Remove / हटाएं)` link in the promo code bar for switching or clearing discounts without dumping the cart.
       - Fully localized orders drawer empty state and close action buttons in natural Hindi when `lang === "hi"`.
 
+33. **Mobile Horizontal Overflow & White Strip Removal (Verified Nov 1, 2026):**
+    - **Identified Root Causes:**
+      1. `src/app/layout.tsx` had default `body` class `bg-slate-50` (#f8fafc - light gray/white). If any horizontal overflow occurred on mobile, the viewport expanded sideways, revealing the white canvas background as an unsightly vertical strip ("white patti") on the right.
+      2. Lack of `overflow-x: hidden` and `max-width: 100vw` on `html` and `body` allowed mobile touch dragging to shift the viewport horizontally ("page hil dhul ho raha tha").
+      3. In `src/app/page.tsx`, the top navbar displayed Logo, SaaS badge, Language Switcher, Explore Demo CTA, and Hamburger menu all in a single row without wrapping on mobile screens (<640px), forcing the header to ~395px-406px wide on 360px/390px mobile viewports.
+      4. The Mock Browser Window in the simulator section contained a 46-character non-breaking URL (`scanbite-plum.vercel.app/r/grand-spice/t/tbl-4`) in monospace without truncation, forcing the container outward.
+    - **Resolution Implemented:**
+      - **Global Theme Canvas (`src/app/layout.tsx` & `src/app/globals.css`):** Configured `html` and `body` with `bg-slate-950 text-slate-100 max-width: 100vw; overflow-x: hidden;`. This eliminates any possibility of white overscroll gutters or horizontal panning across all mobile devices.
+      - **Page Root Wrapper (`src/app/page.tsx`):** Added `w-full max-w-full overflow-x-clip` to strictly clip any decorative glows or horizontal micro-overflows.
+      - **Mobile Navbar Header Polish:** Responsive action controls: set `Explore Demo` navbar CTA to `hidden sm:inline-flex`. On mobile phones (<640px), the navbar now elegantly displays the Brand Logo on the left and `[文A हिंदी]` + `[☰]` Hamburger on the right with generous breathing room.
+      - **Mobile Drawer 1-Click Demo:** Added a prominent `⚡ Explore Demo Dashboard` button inside the mobile drawer so smartphone users retain instant 1-tap access to the live kitchen KDS and owner console.
+      - **Simulator URL Truncation:** Added `min-w-0` and `truncate max-w-[150px] sm:max-w-none` to prevent long monospace URLs from pushing screen boundaries.
+      - **Simulator Cards & Tabs Grid:** Refactored simulator tab buttons and sub-cards to `grid-cols-1 sm:grid-cols-2` with responsive padding (`px-3 sm:px-4`).
+      - **Footer Clip:** Added `overflow-hidden` to `footer`.
+    - **Production Verification:** Clean build (`cmd /c "npm run build"`) compiling 23/23 App Router routes with 0 errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

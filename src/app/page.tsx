@@ -68,18 +68,18 @@ export default function SaaSPlatformHome() {
   )}`;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white w-full max-w-full overflow-x-clip">
       {/* Top Navbar */}
       <header className="border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-3 md:gap-6">
+        <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-3 md:gap-6">
           {/* Brand Logo & SaaS Badge */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 mr-2 sm:mr-4 xl:mr-8 group">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-base sm:text-lg shadow-lg shadow-orange-600/30 group-hover:scale-105 transition">
+          <Link href="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0 mr-1 sm:mr-4 xl:mr-8 group">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-sm sm:text-lg shadow-lg shadow-orange-600/30 group-hover:scale-105 transition">
               ⚡
             </div>
             <div className="flex items-center">
-              <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">ScanBite</span>
-              <span className="text-[10px] ml-2 font-bold uppercase tracking-wider text-orange-400 bg-orange-950/70 border border-orange-800/70 px-2 py-0.5 rounded-md">
+              <span className="font-extrabold text-sm sm:text-lg text-white tracking-tight">ScanBite</span>
+              <span className="text-[9px] sm:text-[10px] ml-1.5 sm:ml-2 font-bold uppercase tracking-wider text-orange-400 bg-orange-950/70 border border-orange-800/70 px-1.5 sm:px-2 py-0.5 rounded-md">
                 SaaS
               </span>
             </div>
@@ -108,12 +108,12 @@ export default function SaaSPlatformHome() {
           </nav>
 
           {/* Right Action Controls */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto lg:ml-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 ml-auto lg:ml-0">
             {/* Language Switcher - Clean Devanagari / English toggle without Windows IN/GB emoji fallback artifacts */}
             <button
               onClick={toggleLanguage}
               aria-label="Toggle Language"
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/90 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+              className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/90 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition active:scale-95 shadow-sm"
               title={lang === "en" ? "हिंदी में बदलें" : "Switch to English"}
             >
               <Languages className="w-3.5 h-3.5 text-orange-400 shrink-0" />
@@ -128,10 +128,10 @@ export default function SaaSPlatformHome() {
               <span>{lang === "hi" ? "फ्री सेटअप" : "Get ScanBite Free"}</span>
             </Link>
 
-            {/* Live Demo Button */}
+            {/* Live Demo Button - Shown on sm+ so mobile screens never squeeze or overflow */}
             <Link
               href="/dashboard?demo=true"
-              className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-1.5 shrink-0"
+              className="hidden sm:inline-flex bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 items-center gap-1.5 shrink-0"
             >
               <span>{lang === "hi" ? "लाइव डेमो" : "Explore Demo"}</span>
               <ArrowRight className="w-3.5 h-3.5 shrink-0" />
@@ -140,7 +140,7 @@ export default function SaaSPlatformHome() {
             {/* Mobile Menu Hamburger */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
+              className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white shrink-0 active:scale-95 transition"
               aria-label="Open navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -198,11 +198,20 @@ export default function SaaSPlatformHome() {
 
             <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
               <Link
+                href="/dashboard?demo=true"
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-center text-xs font-black text-white shadow-lg shadow-orange-600/30 flex items-center justify-center gap-2 active:scale-95 transition"
+              >
+                <Zap className="w-4 h-4 fill-white" />
+                <span>{lang === "hi" ? "⚡ लाइव डेमो डैशबोर्ड खोलें" : "⚡ Explore Demo Dashboard"}</span>
+              </Link>
+
+              <Link
                 href="/register"
                 onClick={() => setMobileMenuOpen(false)}
-                className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-center text-xs font-black text-white shadow-lg shadow-orange-600/30"
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-center text-xs font-bold text-slate-200 active:scale-95 transition"
               >
-                {lang === "hi" ? "🚀 फ्री 14-दिन ट्रायल शुरू करें" : "🚀 Start 14-Day Free Setup"}
+                {lang === "hi" ? "🚀 फ्री 14-दिन सेटअप शुरू करें" : "🚀 Start 14-Day Free Setup"}
               </Link>
             </div>
           </div>
@@ -329,52 +338,52 @@ export default function SaaSPlatformHome() {
           </div>
 
           {/* Simulator Tabs */}
-          <div className="flex justify-center mb-8">
-            <div className="inline-flex p-1.5 rounded-2xl bg-slate-950 border border-slate-800 gap-1 sm:gap-2">
+          <div className="flex justify-center mb-8 px-2">
+            <div className="inline-flex max-w-full p-1 sm:p-1.5 rounded-2xl bg-slate-950 border border-slate-800 gap-1 sm:gap-2">
               <button
                 onClick={() => setActiveTab("customer")}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
                   activeTab === "customer"
                     ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                <Smartphone className="w-4 h-4" />
+                <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                 <span>{lang === "hi" ? "ग्राहक क्यूआर मेन्यू" : "Customer QR Experience"}</span>
               </button>
 
               <button
                 onClick={() => setActiveTab("kitchen")}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap ${
                   activeTab === "kitchen"
                     ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                <ChefHat className="w-4 h-4" />
+                <ChefHat className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                 <span>{lang === "hi" ? "किचन KDS कंसोल" : "Kitchen KDS Display"}</span>
               </button>
             </div>
           </div>
 
           {/* Simulator Content Window */}
-          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
+          <div className="bg-slate-950 border border-slate-800 rounded-3xl p-4 sm:p-8 shadow-2xl relative overflow-hidden">
             {/* Top Mock Window Bar */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                <span className="text-xs font-mono text-slate-500 ml-2">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-6 gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-red-500/80 shrink-0" />
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-amber-500/80 shrink-0" />
+                <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500/80 shrink-0" />
+                <span className="text-[11px] sm:text-xs font-mono text-slate-500 ml-1 sm:ml-2 truncate max-w-[150px] sm:max-w-none">
                   {activeTab === "customer" 
                     ? "scanbite-plum.vercel.app/r/grand-spice/t/tbl-4"
                     : "scanbite-plum.vercel.app/dashboard?demo=true"}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-bold text-emerald-400">
+                <span className="text-[10px] sm:text-[11px] font-bold text-emerald-400 whitespace-nowrap">
                   {lang === "hi" ? "लाइव कनेक्टेड" : "Real-Time Synced"}
                 </span>
               </div>
@@ -399,7 +408,7 @@ export default function SaaSPlatformHome() {
                       : "Diners at Table 4 scan the QR. Rahul adds Paneer Tikka, Anjali adds Virgin Mojito. Items immediately sync across all phones tagged with diner names."}
                   </p>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                       <div className="text-xs font-bold text-emerald-400 mb-1">
                         {lang === "hi" ? "💳 3-मोड स्मार्ट बिल स्प्लिट" : "💳 3-Mode Smart Split Bill"}
@@ -499,7 +508,7 @@ export default function SaaSPlatformHome() {
                       : "As soon as a diner orders, a loud synthesizer chime plays. Chefs view table number, elapsed timer, diner names, and cooking notes. 1-click thermal KOT slip printing."}
                   </p>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
                       <div className="text-xs font-bold text-orange-400 mb-1">
                         {lang === "hi" ? "🖨️ थर्मल KOT स्लिप" : "🖨️ Thermal KOT Printing"}
@@ -1189,7 +1198,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Comprehensive SaaS Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 pt-16 pb-12 text-slate-400">
+      <footer className="border-t border-slate-800 bg-slate-950 pt-16 pb-12 text-slate-400 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-12">
             {/* Col 1: Brand Info */}
