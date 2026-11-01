@@ -259,6 +259,17 @@
     - **Active vs Converted Leads Separation:** Added an `"Active Pipeline (Pending Leads)"` quick filter in Tab 5. When a lead is approved and onboarded, it naturally clears from the pending leads pipeline and moves to `"Converted (Fleet)"`.
     - **In-Fleet Direct Jump:** Converted leads in Tab 5 show a green `"In Fleet"` button with direct 1-click navigation to the restaurant in the fleet, eliminating duplicate onboarding attempts.
 
+23. **Public Marketing Page Audit, Hindi/English Bilingual Toggle, 404 Favicon Fix & Interactive Product Simulator (Verified Nov 1, 2026):**
+    - **Eliminated 404 Favicon Console Error:** Added high-res SVG branding icons (`src/app/icon.svg`, `public/favicon.svg`) and wired them into `metadata.icons` in `src/app/layout.tsx`. All browser visits now resolve icons with HTTP 200/304 with 0 console errors.
+    - **Bilingual English ⮂ हिंदी 1-Tap Toggle:** Added a prominent navbar language switcher that seamlessly toggles the marketing page between English and natural, professional Hindi. Remembers selection in `localStorage` (`scanbite_lang`).
+    - **Live 3-Pillar Demo Hub in Hero:** Added direct 1-click demo launchers for all three core portals: 📱 Customer QR Menu (Table 4), 🍳 Live Kitchen KDS & Owner Console, and 🛎️ Mobile Waiter & Captain Mode (`/waiter`), with guidance to test real-time sync across tabs.
+    - **Interactive Product Simulator Section (`#simulator`):** Added a live tabbed simulation showcasing Customer Menu (group ordering & split bill), Kitchen KDS (chimes, timer alerts, thermal KOT), and Waiter App (haptic buzzer, 1-tap attend).
+    - **Interactive ROI & Revenue Growth Calculator (`#calculator`):** Added dynamic sliders for Table Count, Average Bill Value, and Daily Turns, computing estimated extra monthly turnover (+20%), waiter hours saved, and 48-hour ROI payback.
+    - **Interactive FAQ Accordion (`#faq`):** Added 6 essential questions resolving common restaurant owner objections (no app download needed, 0% UPI commission directly to bank, works on existing phones/tablets, 1-click thermal KOT slips, full Hindi support, under 10-minute go-live).
+    - **Responsive Mobile Navigation Drawer & Direct Login:** Added a mobile hamburger drawer allowing instant access to all sections, plus dedicated "Owner & Staff Sign In" links to `/dashboard`.
+    - **Comprehensive SaaS Footer & WhatsApp Support:** Added full multi-column footer with live portal links, feature shortcuts, trust badges (Made in India 🇮🇳, 0% Commission, 99.9% Uptime), and direct WhatsApp support link (`+91 98765 43210`).
+    - **Zero-Regression Verification:** Full production Next.js build (`npm run build`) compiled 100% of pages (all 23 routes) with 0 errors, verified locally via Chrome DevTools MCP with 0 console errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
