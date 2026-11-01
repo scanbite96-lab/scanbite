@@ -373,12 +373,6 @@ export default function WaiterMobilePage() {
     }
   };
 
-  const handleQuickDemoLogin = (pin = "2345") => {
-    setSlugInput("grand-spice");
-    setPinInput(pin);
-    submitPinLogin(pin);
-  };
-
   const handleLogout = async () => {
     try {
       await fetch("/api/auth", {
@@ -484,6 +478,25 @@ export default function WaiterMobilePage() {
     variant?: PortionVariant | null, 
     addons: DishAddon[] = []
   ) => {
+    // Check remaining kitchen portion stock
+    if (item.stockCount !== null && item.stockCount !== undefined && item.stockCount >= 0) {
+      if (item.stockCount === 0 || !item.isAvailable) {
+        setPunchSuccessMsg(`⚠️ "${item.name}" is currently Sold Out!`);
+        setTimeout(() => setPunchSuccessMsg(null), 4000);
+        if ("vibrate" in navigator) navigator.vibrate([50, 50]);
+        return;
+      }
+      const existingInCart = punchCart
+        .filter((ci) => ci.menuItem.id === item.id)
+        .reduce((sum, ci) => sum + ci.quantity, 0);
+      if (existingInCart + 1 > item.stockCount) {
+        setPunchSuccessMsg(`⚠️ Only ${item.stockCount} portions of "${item.name}" left today!`);
+        setTimeout(() => setPunchSuccessMsg(null), 4000);
+        if ("vibrate" in navigator) navigator.vibrate([50, 50]);
+        return;
+      }
+    }
+
     setPunchCart((prev) => {
       const existingIndex = prev.findIndex(
         (ci) =>
@@ -805,22 +818,11 @@ export default function WaiterMobilePage() {
             </div>
           </div>
 
-          {/* Quick Demo Login Pill */}
-          <div className="mt-4 flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin("2345")}
-              className="w-full py-2.5 px-4 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 active:scale-98 border border-orange-500/30 text-orange-400 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>1-Tap Demo Captain Login (Amit Waiter - PIN 2345)</span>
-            </button>
-            <div className="flex justify-between items-center text-[11px] text-slate-500 px-1">
-              <span>Default restaurant staff PIN: <strong className="text-slate-400">1234</strong></span>
-              <Link href="/dashboard" className="text-orange-400 hover:underline">
-                Owner Dashboard →
-              </Link>
-            </div>
+          {/* Bottom link */}
+          <div className="mt-4 flex justify-center items-center text-[11px] text-slate-500">
+            <Link href="/dashboard" className="text-orange-400 hover:underline">
+              Switch to Owner Dashboard →
+            </Link>
           </div>
         </div>
 
@@ -1426,6 +1428,21 @@ export default function WaiterMobilePage() {
                         <span className="text-xs font-black text-orange-400">
                           ₹{item.price}
                         </span>
+                        {item.stockCount !== null && item.stockCount !== undefined && item.stockCount >= 0 ? (
+                          !item.isAvailable || item.stockCount === 0 ? (
+                            <span className="text-[10px] font-black text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
+                              🔴 Sold Out
+                            </span>
+                          ) : item.stockCount <= 10 ? (
+                            <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 animate-pulse">
+                              🔥 Only {item.stockCount} left
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                              🟢 {item.stockCount} left
+                            </span>
+                          )
+                        ) : null}
                         {hasVariants && (
                           <span className="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">
                             Variants available
@@ -1436,7 +1453,11 @@ export default function WaiterMobilePage() {
 
                     {/* Add / Stepper controls */}
                     <div className="shrink-0">
-                      {hasVariants ? (
+                      {!item.isAvailable || (item.stockCount !== null && item.stockCount !== undefined && item.stockCount === 0) ? (
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-800/80 px-2.5 py-1.5 rounded-xl border border-slate-700/60">
+                          Sold Out
+                        </span>
+                      ) : hasVariants ? (
                         <button
                           type="button"
                           onClick={() => handleOpenVariantPicker(item)}
@@ -1757,6 +1778,22 @@ export default function WaiterMobilePage() {
                             <span>₹{it.price * it.quantity}</span>
                           </div>
                         ))}
+                        <div className="flex justify-between items-center pt-1.5 border-t border-slate-900 text-[10px]">
+                          <span className="font-bold text-slate-400">Total: ₹{ord.total}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const origin = typeof window !== "undefined" ? window.location.origin : "https://scanbite-plum.vercel.app";
+                              const receiptUrl = `${origin}/receipt/${ord.id}`;
+                              const text = `🍽️ *${restaurant?.name || "ScanBite Restaurant"}*\n📍 Table: ${ord.tableNumber} | Order: #${ord.id.slice(-4)}\nGrand Total: ₹${ord.total}\n\n🧾 *Official Tax Invoice PDF:*\n${receiptUrl}`;
+                              const url = ord.customerPhone ? `https://wa.me/91${ord.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+                              window.open(url, "_blank");
+                            }}
+                            className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>📲 WhatsApp Bill</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -106,6 +106,16 @@ export default function CustomerTableMenu() {
   const previousStatusMap = useRef<Record<string, string>>({});
   const prevOrdersCountRef = useRef<number>(0);
 
+  // Completed receipt access for diners
+  const [lastReceipt, setLastReceipt] = useState<{
+    id: string;
+    total: number;
+    itemsCount: number;
+    tableNumber: string;
+    whatsappUri: string;
+    timestamp: number;
+  } | null>(null);
+
   // Service request cooldown timer (seconds remaining)
   const [serviceCooldowns, setServiceCooldowns] = useState<Record<string, number>>({});
 
@@ -154,8 +164,9 @@ export default function CustomerTableMenu() {
     if (!restaurant) return null;
     const cleanParam = tableParam.toLowerCase().replace(/[^a-z0-9]/g, "");
     const paramNum = tableParam.replace(/\D/g, "");
+    const tables = restaurant.tables || [];
 
-    const found = restaurant.tables.find((tbl) => {
+    const found = tables.find((tbl) => {
       const cleanTblId = tbl.id.toLowerCase().replace(/[^a-z0-9]/g, "");
       const cleanTblNum = tbl.tableNumber.toLowerCase().replace(/[^a-z0-9]/g, "");
       const tblNum = tbl.tableNumber.replace(/\D/g, "");
@@ -168,7 +179,7 @@ export default function CustomerTableMenu() {
       );
     });
 
-    return found || restaurant.tables[0] || {
+    return found || tables[0] || {
       id: tableParam,
       tableNumber: `Table ${paramNum || "1"}`,
       seats: 4,
@@ -178,6 +189,19 @@ export default function CustomerTableMenu() {
   // 3. Cart & Diner Details Persistence (localStorage)
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // Load last receipt if available within 6 hours
+    try {
+      const savedReceipt = localStorage.getItem(`scanbite_last_receipt_${slug}_${tableParam}`);
+      if (savedReceipt) {
+        const parsed = JSON.parse(savedReceipt);
+        if (Date.now() - (parsed.timestamp || 0) < 6 * 60 * 60 * 1000) {
+          setLastReceipt(parsed);
+        } else {
+          localStorage.removeItem(`scanbite_last_receipt_${slug}_${tableParam}`);
+        }
+      }
+    } catch {}
 
     // Diner identity for group orders
     let savedId = localStorage.getItem("scanbite_diner_id");
@@ -453,6 +477,26 @@ export default function CustomerTableMenu() {
     if (!customizingItem) return;
     triggerHaptic();
 
+    // Check remaining kitchen portion stock
+    if (customizingItem.stockCount !== null && customizingItem.stockCount !== undefined && customizingItem.stockCount >= 0) {
+      if (customizingItem.stockCount === 0 || !customizingItem.isAvailable) {
+        showToast(
+          lang === "hi"
+            ? `माफ़ करें! "${customizingItem.name}" आज समाप्त (Sold Out) हो चुका है।`
+            : `Sorry! "${customizingItem.name}" is sold out for today.`
+        );
+        return;
+      }
+      if (customizingQty > customizingItem.stockCount) {
+        showToast(
+          lang === "hi"
+            ? `माफ़ करें! "${customizingItem.name}" के आज केवल ${customizingItem.stockCount} पोर्शन उपलब्ध हैं।`
+            : `Sorry! Only ${customizingItem.stockCount} portion(s) of "${customizingItem.name}" available today.`
+        );
+        return;
+      }
+    }
+
     const variantPart = selectedVariant ? selectedVariant.name : "base";
     const addonIds = [...selectedAddons].map((a) => a.id).sort().join("-");
     const cartKey = `${customizingItem.id}_${variantPart}_${addonIds || "none"}`;
@@ -520,6 +564,29 @@ export default function CustomerTableMenu() {
 
   const addToCart = (item: MenuItem) => {
     triggerHaptic();
+
+    // Check remaining kitchen portion stock
+    if (item.stockCount !== null && item.stockCount !== undefined && item.stockCount >= 0) {
+      if (item.stockCount === 0 || !item.isAvailable) {
+        showToast(
+          lang === "hi"
+            ? `माफ़ करें! "${item.name}" आज समाप्त (Sold Out) हो चुका है।`
+            : `Sorry! "${item.name}" is sold out for today.`
+        );
+        return;
+      }
+      const existing = cart[item.id];
+      const curQty = existing ? existing.quantity : 0;
+      if (curQty + 1 > item.stockCount) {
+        showToast(
+          lang === "hi"
+            ? `माफ़ करें! "${item.name}" के आज केवल ${item.stockCount} पोर्शन उपलब्ध हैं।`
+            : `Sorry! Only ${item.stockCount} portion(s) of "${item.name}" available today.`
+        );
+        return;
+      }
+    }
+
     setCart((prev) => {
       const existing = prev[item.id];
       if (existing) {
@@ -571,6 +638,20 @@ export default function CustomerTableMenu() {
 
   const incrementCartKey = (key: string) => {
     triggerHaptic();
+    const existing = cart[key];
+    if (existing && existing.item) {
+      const it = existing.item;
+      if (it.stockCount !== null && it.stockCount !== undefined && it.stockCount >= 0) {
+        if (existing.quantity + 1 > it.stockCount) {
+          showToast(
+            lang === "hi"
+              ? `माफ़ करें! "${it.name}" के आज केवल ${it.stockCount} पोर्शन उपलब्ध हैं।`
+              : `Sorry! Only ${it.stockCount} portion(s) of "${it.name}" left today.`
+          );
+          return;
+        }
+      }
+    }
     setCart((prev) => {
       const existing = prev[key];
       if (!existing) return prev;
@@ -926,6 +1007,7 @@ export default function CustomerTableMenu() {
       `*Grand Total: ${restaurant.currencySymbol}${ord.total}*\n` +
       `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})\n` +
       (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}\n` : "") +
+      `\n🧾 *Official Tax Invoice PDF Bill:*\n${typeof window !== "undefined" ? window.location.origin : "https://scanbite-plum.vercel.app"}/receipt/${ord.id}\n` +
       `\nThank you for dining with us! 🙏`;
 
     return phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -1513,14 +1595,18 @@ export default function CustomerTableMenu() {
                       (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80";
                     }}
                   />
-                  {!item.isAvailable && (
+                  {(!item.isAvailable || (item.stockCount !== null && item.stockCount !== undefined && item.stockCount === 0)) ? (
                     <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center p-1 text-center">
                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">
                         {t.soldOut}
                       </span>
                     </div>
-                  )}
-                  {item.isBestseller && item.isAvailable && (
+                  ) : item.stockCount !== null && item.stockCount !== undefined && item.stockCount > 0 && item.stockCount <= 10 ? (
+                    <div className="absolute top-1.5 right-1.5 bg-rose-600/90 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow animate-pulse">
+                      🔥 {lang === "hi" ? `सिर्फ ${item.stockCount} बचे` : `Only ${item.stockCount} left`}
+                    </div>
+                  ) : null}
+                  {item.isBestseller && item.isAvailable && (!item.stockCount || item.stockCount > 0) && (
                     <div className="absolute top-1.5 left-1.5 bg-orange-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
                       {t.bestseller}
                     </div>
@@ -1587,7 +1673,7 @@ export default function CustomerTableMenu() {
                     )}
 
                     {/* Add Button or Stepper */}
-                    {item.isAvailable ? (
+                    {item.isAvailable && (item.stockCount === null || item.stockCount === undefined || item.stockCount > 0) ? (
                       hasCustomisation ? (
                         <div className="flex items-center gap-1.5">
                           {inCartQty > 0 && (

@@ -100,7 +100,7 @@ export default function SuperAdminDashboard() {
   // Inquiries & Leads State
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [inquiriesSearch, setInquiriesSearch] = useState("");
-  const [inquiriesStatusFilter, setInquiriesStatusFilter] = useState<string>("all");
+  const [inquiriesStatusFilter, setInquiriesStatusFilter] = useState<string>("active_pipeline");
   const [isUpdatingInquiry, setIsUpdatingInquiry] = useState<string | null>(null);
   const [isUpdatingOrder, setIsUpdatingOrder] = useState<string | null>(null);
 
@@ -387,6 +387,17 @@ export default function SuperAdminDashboard() {
     });
   }, [recentOrders, ordersSearch, ordersStatusFilter, ordersRestaurantFilter]);
 
+  // Helper: check if an inquiry lead is already live in Fleet
+  const isLeadInFleet = (inq: Inquiry) => {
+    const cleanPhone = (inq.phone || "").replace(/\D/g, "").slice(-10);
+    const slugCandidate = (inq.restaurantName || "rest").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return restaurants.some((r) => 
+      (r.slug && slugCandidate && r.slug === slugCandidate) ||
+      (r.name && inq.restaurantName && r.name.toLowerCase().trim() === inq.restaurantName.toLowerCase().trim()) ||
+      (cleanPhone && r.phone && r.phone.replace(/\D/g, "").slice(-10) === cleanPhone)
+    );
+  };
+
   // Filtered Leads & Inquiries
   const filteredInquiries = useMemo(() => {
     return inquiries.filter((inq) => {
@@ -397,18 +408,22 @@ export default function SuperAdminDashboard() {
         (inq.city && inq.city.toLowerCase().includes(inquiriesSearch.toLowerCase())) ||
         (inq.notes && inq.notes.toLowerCase().includes(inquiriesSearch.toLowerCase()));
 
+      const inFleet = isLeadInFleet(inq);
+
       let matchStatus = true;
       if (inquiriesStatusFilter === "all") {
         matchStatus = true;
       } else if (inquiriesStatusFilter === "active_pipeline") {
-        matchStatus = inq.status !== "converted" && inq.status !== "closed";
+        matchStatus = !inFleet && inq.status !== "closed";
+      } else if (inquiriesStatusFilter === "converted") {
+        matchStatus = inq.status === "converted" || inFleet;
       } else {
         matchStatus = inq.status.toLowerCase() === inquiriesStatusFilter.toLowerCase();
       }
 
       return matchSearch && matchStatus;
     });
-  }, [inquiries, inquiriesSearch, inquiriesStatusFilter]);
+  }, [inquiries, inquiriesSearch, inquiriesStatusFilter, restaurants]);
 
   // Update Inquiry Status
   const handleUpdateInquiryStatus = async (id: string, newStatus: string) => {
@@ -430,6 +445,24 @@ export default function SuperAdminDashboard() {
     } finally {
       setIsUpdatingInquiry(null);
     }
+  };
+
+  // Status Selector Handler: If converting an un-onboarded lead, directly open Onboard & Launch modal
+  const handleSelectInquiryStatus = (inq: Inquiry, newStatus: string) => {
+    if (newStatus === "converted") {
+      const slugCandidate = (inq.restaurantName || "rest").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const cleanInqPhone = (inq.phone || "").replace(/\D/g, "").slice(-10);
+      const alreadyInFleet = restaurants.some((r) => 
+        r.slug === slugCandidate || 
+        r.name.toLowerCase().trim() === inq.restaurantName.toLowerCase().trim() ||
+        (cleanInqPhone && r.phone && r.phone.replace(/\D/g, "").slice(-10) === cleanInqPhone)
+      );
+      if (!alreadyInFleet) {
+        handleOnboardInquiry(inq);
+        return;
+      }
+    }
+    handleUpdateInquiryStatus(inq.id, newStatus);
   };
 
   // Delete Inquiry
@@ -721,7 +754,7 @@ export default function SuperAdminDashboard() {
       const slug = newRestForm.slug.trim() || newRestForm.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
       const res = await fetch("/api/restaurants", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAdminHeaders(),
         body: JSON.stringify({
           name: newRestForm.name.trim(),
           slug,
@@ -744,22 +777,31 @@ export default function SuperAdminDashboard() {
         showToast(`🎉 Restaurant "${newRestForm.name}" approved & launched into Fleet!`);
         setIsAddRestModalOpen(false);
 
-        // If this onboarding originated from a partner lead, automatically mark it as converted
-        if (onboardingInquiryId) {
+        // Mark all matching inquiries for this restaurant as converted
+        const cleanPhone = (newRestForm.phone || "").replace(/\D/g, "").slice(-10);
+        const matchingInqs = inquiries.filter(
+          (i) =>
+            i.id === onboardingInquiryId ||
+            (cleanPhone && i.phone.replace(/\D/g, "").slice(-10) === cleanPhone) ||
+            i.restaurantName.toLowerCase().trim() === newRestForm.name.toLowerCase().trim()
+        );
+
+        for (const mInq of matchingInqs) {
           try {
             await fetch("/api/inquiries", {
               method: "PATCH",
               headers: getAdminHeaders(),
-              body: JSON.stringify({ id: onboardingInquiryId, status: "converted" }),
+              body: JSON.stringify({ id: mInq.id, status: "converted" }),
             });
-            setInquiries((prev) =>
-              prev.map((i) => (i.id === onboardingInquiryId ? { ...i, status: "converted" } : i))
-            );
-          } catch (inqErr) {
-            console.error("Failed to mark inquiry converted:", inqErr);
-          }
-          setOnboardingInquiryId(null);
+          } catch {}
         }
+
+        setInquiries((prev) =>
+          prev.map((i) =>
+            matchingInqs.some((m) => m.id === i.id) ? { ...i, status: "converted" } : i
+          )
+        );
+        setOnboardingInquiryId(null);
 
         setNewRestForm({
           name: "",
@@ -774,7 +816,7 @@ export default function SuperAdminDashboard() {
           initialTables: 6,
         });
 
-        // Refresh fleet metrics
+        // Refresh fleet metrics from live database
         await fetchAdminData(false);
 
         // Seamlessly move to Restaurants Fleet tab and highlight the new restaurant
@@ -2065,7 +2107,7 @@ export default function SuperAdminDashboard() {
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
                 </div>
                 <div className="text-2xl font-black text-amber-300 mt-2">
-                  {inquiries.filter((i) => i.status === "new").length}
+                  {inquiries.filter((i) => i.status === "new" && !isLeadInFleet(i)).length}
                 </div>
                 <span className="text-[11px] text-amber-500/80 mt-1 block">Requires immediate outreach</span>
               </div>
@@ -2076,18 +2118,18 @@ export default function SuperAdminDashboard() {
                   <MessageSquare className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="text-2xl font-black text-blue-300 mt-2">
-                  {inquiries.filter((i) => i.status === "contacted" || i.status === "demo_scheduled").length}
+                  {inquiries.filter((i) => (i.status === "contacted" || i.status === "demo_scheduled") && !isLeadInFleet(i)).length}
                 </div>
                 <span className="text-[11px] text-slate-500 mt-1 block">Contacted or demo scheduled</span>
               </div>
 
               <div className="bg-slate-900/90 border border-emerald-900/40 p-5 rounded-3xl">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Converted</span>
+                  <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Converted (In Fleet)</span>
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="text-2xl font-black text-emerald-300 mt-2">
-                  {inquiries.filter((i) => i.status === "converted").length}
+                  {inquiries.filter((i) => i.status === "converted" || isLeadInFleet(i)).length}
                 </div>
                 <span className="text-[11px] text-emerald-500/80 mt-1 block">Active ScanBite restaurants</span>
               </div>
@@ -2110,17 +2152,25 @@ export default function SuperAdminDashboard() {
                   </div>
 
                   <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
-                    {["all", "active_pipeline", "new", "contacted", "demo_scheduled", "converted", "closed"].map((st) => (
+                    {[
+                      { key: "active_pipeline", label: `Pending Leads (${inquiries.filter((i) => !isLeadInFleet(i) && i.status !== "closed").length})` },
+                      { key: "new", label: `New (${inquiries.filter((i) => i.status === "new" && !isLeadInFleet(i)).length})` },
+                      { key: "contacted", label: `Contacted (${inquiries.filter((i) => i.status === "contacted").length})` },
+                      { key: "demo_scheduled", label: `Demo (${inquiries.filter((i) => i.status === "demo_scheduled").length})` },
+                      { key: "converted", label: `In Fleet (${inquiries.filter((i) => i.status === "converted" || isLeadInFleet(i)).length})` },
+                      { key: "all", label: `All Leads (${inquiries.length})` },
+                      { key: "closed", label: `Closed (${inquiries.filter((i) => i.status === "closed").length})` },
+                    ].map((st) => (
                       <button
-                        key={st}
-                        onClick={() => setInquiriesStatusFilter(st)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition whitespace-nowrap ${
-                          inquiriesStatusFilter === st
+                        key={st.key}
+                        onClick={() => setInquiriesStatusFilter(st.key)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                          inquiriesStatusFilter === st.key
                             ? "bg-orange-600 text-white shadow-md shadow-orange-600/30"
                             : "bg-slate-950 text-slate-400 border border-slate-800 hover:text-white"
                         }`}
                       >
-                        {st === "active_pipeline" ? "Pending Leads" : st.replace("_", " ")}
+                        {st.label}
                       </button>
                     ))}
                   </div>
@@ -2160,6 +2210,16 @@ export default function SuperAdminDashboard() {
                     const waMessage = `Hi ${inq.ownerName || "Partner"}! I'm following up from ScanBite regarding your digital QR menu inquiry for "${inq.restaurantName}". Let's get your restaurant set up!`;
                     const waUrl = `https://wa.me/${waPhone}?text=${encodeURIComponent(waMessage)}`;
 
+                    // Check live Fleet linkage
+                    const cleanInqPhone = (inq.phone || "").replace(/\D/g, "").slice(-10);
+                    const slugCandidate = (inq.restaurantName || "rest").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+                    const matchingRest = restaurants.find((r) => 
+                      (r.slug && slugCandidate && r.slug === slugCandidate) ||
+                      (r.name && inq.restaurantName && r.name.toLowerCase().trim() === inq.restaurantName.toLowerCase().trim()) ||
+                      (cleanInqPhone && r.phone && r.phone.replace(/\D/g, "").slice(-10) === cleanInqPhone)
+                    );
+                    const isInFleet = Boolean(matchingRest);
+
                     return (
                       <div
                         key={inq.id}
@@ -2183,18 +2243,24 @@ export default function SuperAdminDashboard() {
                             {/* Status Badge */}
                             <span
                               className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                inq.status === "new"
+                                isInFleet
+                                  ? "bg-emerald-950 text-emerald-300 border border-emerald-500/50"
+                                  : inq.status === "new"
                                   ? "bg-amber-950 text-amber-300 border border-amber-600/50"
                                   : inq.status === "contacted"
                                   ? "bg-blue-950 text-blue-300 border border-blue-600/50"
                                   : inq.status === "demo_scheduled"
                                   ? "bg-purple-950 text-purple-300 border border-purple-600/50"
                                   : inq.status === "converted"
-                                  ? "bg-emerald-950 text-emerald-300 border border-emerald-600/50"
+                                  ? "bg-amber-950 text-amber-300 border border-amber-600/50"
                                   : "bg-slate-800 text-slate-400 border border-slate-700"
                               }`}
                             >
-                              {inq.status.replace("_", " ")}
+                              {isInFleet
+                                ? `✓ IN FLEET (${matchingRest?.slug})`
+                                : inq.status === "converted"
+                                ? "CONVERTED (NOT IN FLEET)"
+                                : inq.status.replace("_", " ")}
                             </span>
                           </div>
 
@@ -2259,7 +2325,7 @@ export default function SuperAdminDashboard() {
                           <select
                             disabled={isUpdatingInquiry === inq.id}
                             value={inq.status}
-                            onChange={(e) => handleUpdateInquiryStatus(inq.id, e.target.value)}
+                            onChange={(e) => handleSelectInquiryStatus(inq, e.target.value)}
                             className="bg-slate-950 border border-slate-800 text-xs text-slate-200 font-bold rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-orange-500 cursor-pointer"
                           >
                             <option value="new">Status: New</option>
@@ -2270,24 +2336,34 @@ export default function SuperAdminDashboard() {
                           </select>
 
                           {/* 1-Click Approve & Onboard / In Fleet Navigator */}
-                          {inq.status === "converted" ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setActiveTab("restaurants");
-                                setPlanFilter("all");
-                                setStatusFilter("all");
-                                setCityFilter("all");
-                                setSearchTerm(inq.restaurantName);
-                                showToast(`🔍 Showing ${inq.restaurantName} in Fleet`);
-                              }}
-                              className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm active:scale-95"
-                              title="Already onboarded in Fleet! Click to view in Fleet."
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>In Fleet</span>
-                              <ExternalLink className="w-3 h-3 text-emerald-400" />
-                            </button>
+                          {isInFleet && matchingRest ? (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab("restaurants");
+                                  setPlanFilter("all");
+                                  setStatusFilter("all");
+                                  setCityFilter("all");
+                                  setSearchTerm(matchingRest.name);
+                                  showToast(`🔍 Showing "${matchingRest.name}" in Fleet`);
+                                }}
+                                className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm active:scale-95"
+                                title={`Live in Fleet (${matchingRest.slug})! Click to view in Fleet.`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>In Fleet</span>
+                                <ExternalLink className="w-3 h-3 text-emerald-400" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleImpersonate(matchingRest)}
+                                className="p-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-orange-500/50 text-slate-300 hover:text-white transition"
+                                title={`Open Owner Console for ${matchingRest.name}`}
+                              >
+                                <Key className="w-3.5 h-3.5 text-orange-400" />
+                              </button>
+                            </div>
                           ) : (
                             <button
                               type="button"

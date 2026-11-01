@@ -140,14 +140,17 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const clientIp = getClientIp(request);
-    // Anti-spam rate limiting: Max 5 new restaurant registrations per 15 minutes per IP
-    const rateLimit = checkRateLimit(`register:${clientIp}`, 5, 900);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: `Too many registration attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
-        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
-      );
+    const isSuperAdmin = isSuperAdminRequest(request);
+    if (!isSuperAdmin) {
+      const clientIp = getClientIp(request);
+      // Anti-spam rate limiting: Max 5 new restaurant registrations per 15 minutes per IP
+      const rateLimit = checkRateLimit(`register:${clientIp}`, 5, 900);
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: `Too many registration attempts. Please wait ${rateLimit.retryAfterSeconds} seconds before trying again.` },
+          { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+        );
+      }
     }
 
     const body = await request.json();

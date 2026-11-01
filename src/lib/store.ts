@@ -326,6 +326,9 @@ export const getTableOrders = async (restaurantId: string, tableId: string, acti
     const targetTableId = matchingTable ? matchingTable.id : tableId;
     const targetTableNumber = matchingTable ? matchingTable.tableNumber : (cleanNum ? `Table ${cleanNum}` : tableId);
 
+    // Stale active orders cutoff (orders older than 2.5 hours belong to past dining sessions)
+    const activeCutoff = new Date(Date.now() - 2.5 * 60 * 60 * 1000);
+
     const orders = await prisma.order.findMany({
       where: {
         restaurantId,
@@ -334,7 +337,15 @@ export const getTableOrders = async (restaurantId: string, tableId: string, acti
           { tableNumber: targetTableNumber },
           { tableId },
         ],
-        ...(activeOnly ? { status: { notIn: ["completed", "cancelled"] } } : {}),
+        ...(activeOnly ? {
+          status: { notIn: ["completed", "cancelled"] },
+          // A served order that is already paid is completed - never return as an active ordering ticket
+          NOT: {
+            status: "served",
+            paymentStatus: "paid",
+          },
+          createdAt: { gte: activeCutoff },
+        } : {}),
       },
       include: { items: true },
       orderBy: { createdAt: "desc" },
@@ -594,6 +605,24 @@ export const updateOrderStatus = async (
     if (tableId) updateData.tableId = tableId;
     if (tableNumber) updateData.tableNumber = tableNumber;
 
+    // Check existing order state to see if this update completes the dining lifecycle
+    let existing: { status: string; paymentStatus: string } | null = null;
+    try {
+      existing = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true, paymentStatus: true },
+      });
+    } catch {}
+
+    const curStatus = status || existing?.status;
+    const curPayment = paymentStatus || existing?.paymentStatus;
+
+    // Lifecycle auto-completion: When an order is both served and paid, mark it completed
+    if (curStatus === "served" && curPayment === "paid") {
+      updateData.status = "completed";
+      updateData.paymentStatus = "paid";
+    }
+
     const updated = await prisma.order.update({
       where: { id: orderId },
       data: updateData,
@@ -601,7 +630,7 @@ export const updateOrderStatus = async (
     });
 
     // Also sync in-memory demo store if applicable
-    updateDemoOrderStatus(orderId, status, paymentStatus, tableId, tableNumber);
+    updateDemoOrderStatus(orderId, (updateData.status as Order["status"]) || status, (updateData.paymentStatus as Order["paymentStatus"]) || paymentStatus, tableId, tableNumber);
 
     return {
       ...updated,

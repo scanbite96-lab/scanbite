@@ -218,11 +218,17 @@ async function runDeepPipelineAudit() {
   // -------------------------------------------------------------
   console.log('\n🔍 [PIPELINE 5] Menu Stock Toggle & Anti-Sold-Out Safeguard...');
   try {
-    // 5.1: Toggle real database item 'item-1' off
-    const toggleOff = await request(`${BASE_URL}/api/menu/toggle`, {
+    // 5.1: Toggle real database item 'item-1' off (guarantee isAvailable: false)
+    let toggleOff = await request(`${BASE_URL}/api/menu/toggle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     }, { slug: 'grand-spice', itemId: 'item-1' });
+    if (toggleOff.status === 200 && toggleOff.body?.isAvailable === true) {
+      toggleOff = await request(`${BASE_URL}/api/menu/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, { slug: 'grand-spice', itemId: 'item-1' });
+    }
     if (toggleOff.status !== 200 || toggleOff.body?.isAvailable !== false) {
       throw new Error(`Failed to toggle item-1 off: ${JSON.stringify(toggleOff.body)}`);
     }
@@ -234,8 +240,8 @@ async function runDeepPipelineAudit() {
       headers: { 'Content-Type': 'application/json' }
     }, {
       restaurantId: 'rest-001',
-      tableId: 'tbl-4',
-      tableNumber: 'Table 4',
+      tableId: 'tbl-5',
+      tableNumber: 'Table 5',
       items: [{ menuItemId: 'item-1', name: 'Grand Royal Butter Chicken', price: 450, quantity: 1, isVeg: false }]
     });
 

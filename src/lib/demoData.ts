@@ -692,6 +692,7 @@ export function resetDemoOrders(): Order[] {
 
 export function getDemoTableOrders(tableId: string, activeOnly: boolean = false): Order[] {
   const cleanNum = tableId.replace(/\D/g, "");
+  const cutoff = Date.now() - 2.5 * 60 * 60 * 1000;
   return demoOrdersStore.filter((o) => {
     const matches = (
       o.tableId === tableId ||
@@ -700,7 +701,10 @@ export function getDemoTableOrders(tableId: string, activeOnly: boolean = false)
     );
     if (!matches) return false;
     if (activeOnly) {
-      return o.status !== "completed" && o.status !== "cancelled";
+      if (o.status === "completed" || o.status === "cancelled") return false;
+      if (o.status === "served" && o.paymentStatus === "paid") return false;
+      const orderTime = new Date(o.createdAt).getTime();
+      if (!isNaN(orderTime) && orderTime < cutoff) return false;
     }
     return true;
   });
@@ -734,6 +738,19 @@ export function vacateDemoTable(tableId: string): void {
 
 export function addDemoOrder(order: Order): Order {
   demoOrdersStore = [order, ...demoOrdersStore];
+  // Auto-decrement demo menu item stock and auto-mark sold out
+  if (order.items && Array.isArray(order.items)) {
+    for (const it of order.items) {
+      const itId = it.menuItemId || (it as any).id;
+      const mItem = DEMO_RESTAURANT.menuItems.find((m) => m.id === itId);
+      if (mItem && mItem.stockCount !== null && mItem.stockCount !== undefined && mItem.stockCount >= 0) {
+        mItem.stockCount = Math.max(0, mItem.stockCount - it.quantity);
+        if (mItem.stockCount === 0) {
+          mItem.isAvailable = false;
+        }
+      }
+    }
+  }
   return order;
 }
 
@@ -746,10 +763,19 @@ export function updateDemoOrderStatus(
 ): Order | null {
   const idx = demoOrdersStore.findIndex((o) => o.id === orderId);
   if (idx === -1) return null;
+
+  let nextStatus = status || demoOrdersStore[idx].status;
+  const nextPayment = paymentStatus || demoOrdersStore[idx].paymentStatus;
+
+  // Auto-complete order when it is served and paid
+  if (nextStatus === "served" && nextPayment === "paid") {
+    nextStatus = "completed";
+  }
+
   const updated: Order = {
     ...demoOrdersStore[idx],
-    ...(status ? { status } : {}),
-    ...(paymentStatus ? { paymentStatus } : {}),
+    status: nextStatus,
+    paymentStatus: nextPayment,
     ...(tableId ? { tableId } : {}),
     ...(tableNumber ? { tableNumber } : {}),
     updatedAt: new Date().toISOString(),

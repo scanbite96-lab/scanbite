@@ -64,7 +64,9 @@ import {
   Pencil,
   ArrowRightLeft,
   Smartphone,
-  LayoutGrid
+  LayoutGrid,
+  Share2,
+  MessageCircle
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
@@ -114,6 +116,17 @@ export default function RestaurantDashboard() {
   // Quick Dish Stock Modal for Kitchen Staff
   const [isStaffStockModalOpen, setIsStaffStockModalOpen] = useState(false);
   const [stockModalSearch, setStockModalSearch] = useState("");
+
+  // Chef Daily Batch Limit & 86 Manager State
+  const [showChefBatchModal, setShowChefBatchModal] = useState(false);
+  const [batchSearchQuery, setBatchSearchQuery] = useState("");
+  const [batchFilter, setBatchFilter] = useState<"all" | "limited" | "sold_out" | "veg" | "non_veg">("all");
+  const [updatingBatchDishId, setUpdatingBatchDishId] = useState<string | null>(null);
+
+  // WhatsApp Digital Bill Dispatch State
+  const [whatsAppModalOrder, setWhatsAppModalOrder] = useState<Order | null>(null);
+  const [whatsAppPhoneInput, setWhatsAppPhoneInput] = useState("");
+  const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
 
   const isOwner = authUser?.role === "owner";
   const isStaff = authUser?.role === "staff";
@@ -1152,6 +1165,113 @@ export default function RestaurantDashboard() {
       }
     } catch {
       showToast("Failed to toggle availability.", "error");
+    }
+  };
+
+  // Handle 1-Tap or Stepper Batch Stock Update
+  const handleUpdateBatchStock = async (dishId: string, count: number) => {
+    if (!restaurant) return;
+    setUpdatingBatchDishId(dishId);
+    try {
+      const res = await fetch("/api/menu", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: dishId,
+          stockCount: count,
+          isAvailable: count === 0 ? false : true,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to update batch stock");
+      }
+
+      const updated = await res.json();
+      setRestaurant((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          menuItems: prev.menuItems.map((m) => (m.id === dishId ? { ...m, ...updated } : m)),
+        };
+      });
+
+      const dishName = restaurant.menuItems.find((m) => m.id === dishId)?.name || "Dish";
+      const statusText = count === 0 
+        ? `"${dishName}" marked Sold Out (0)` 
+        : count < 0 
+          ? `"${dishName}" set to Unlimited portions`
+          : `"${dishName}" batch set to ${count} portions (Auto Sold-Out armed)`;
+      showToast(statusText, "success");
+    } catch (err: any) {
+      console.error("Batch stock update error:", err);
+      showToast(err.message || "Failed to update stock", "error");
+    } finally {
+      setUpdatingBatchDishId(null);
+    }
+  };
+
+  // Handle WhatsApp Bill Dispatch
+  const handleSendWhatsAppBill = async (order: Order) => {
+    const rawPhone = order.customerPhone ? String(order.customerPhone).replace(/\D/g, "") : "";
+    const cleanPhone = rawPhone.length > 10 && rawPhone.startsWith("91") ? rawPhone.slice(2) : rawPhone;
+
+    if (cleanPhone && cleanPhone.length === 10) {
+      try {
+        const res = await fetch(`/api/orders/${order.id}/send-whatsapp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: cleanPhone }),
+        });
+        const data = await res.json();
+        if (data.whatsappUrl) {
+          window.open(data.whatsappUrl, "_blank");
+          showToast(`📲 WhatsApp Tax Invoice opened for #${order.id.slice(-4)} (+91 ${cleanPhone})`, "success");
+        }
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+        showToast("Failed to open WhatsApp bill", "error");
+      }
+    } else {
+      setWhatsAppModalOrder(order);
+      setWhatsAppPhoneInput(cleanPhone);
+    }
+  };
+
+  const handleConfirmWhatsAppSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!whatsAppModalOrder) return;
+    const cleanPhone = whatsAppPhoneInput.replace(/\D/g, "");
+    if (cleanPhone.length < 10) {
+      showToast("Please enter a valid 10-digit WhatsApp phone number.", "error");
+      return;
+    }
+
+    setIsSendingWhatsApp(true);
+    try {
+      const res = await fetch(`/api/orders/${whatsAppModalOrder.id}/send-whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: cleanPhone }),
+      });
+      const data = await res.json();
+      if (data.whatsappUrl) {
+        window.open(data.whatsappUrl, "_blank");
+        showToast(`📲 WhatsApp bill dispatched to +91 ${cleanPhone}!`, "success");
+      }
+
+      setOrders((prev) =>
+        prev.map((o) => (o.id === whatsAppModalOrder.id ? { ...o, customerPhone: cleanPhone } : o))
+      );
+
+      setWhatsAppModalOrder(null);
+      setWhatsAppPhoneInput("");
+    } catch (err: any) {
+      console.error("Failed to send WhatsApp bill:", err);
+      showToast(err.message || "Failed to send WhatsApp bill", "error");
+    } finally {
+      setIsSendingWhatsApp(false);
     }
   };
 
@@ -2340,17 +2460,15 @@ export default function RestaurantDashboard() {
                   <span>Diner Menu ({restaurant.tables[0]?.tableNumber || "Table 1"})</span>
                 </a>
 
-                {/* Staff Sold Out Modal Button (if staff floor mode) */}
-                {!isOwner && canManageMenu && (
-                  <button
-                    onClick={() => setIsStaffStockModalOpen(true)}
-                    className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 hover:text-white p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap"
-                    title="Mark Finished Dishes Out of Stock"
-                  >
-                    <Ban className="w-3.5 h-3.5 text-rose-400" />
-                    <span className="hidden sm:inline">Mark Sold Out</span>
-                  </button>
-                )}
+                {/* Chef Daily Batch Stock & 86 List Button */}
+                <button
+                  onClick={() => setShowChefBatchModal(true)}
+                  className="bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap cursor-pointer"
+                  title="Chef Daily Batch Counter & 86 List (Set 20 Thali, 15 Biryani)"
+                >
+                  <ChefHat className="w-3.5 h-3.5 text-orange-400" />
+                  <span className="hidden sm:inline">Daily Batch Stock</span>
+                </button>
 
                 {/* User Account Info & Sign Out */}
                 <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-800">
@@ -2756,6 +2874,20 @@ export default function RestaurantDashboard() {
                   )}
                 </div>
 
+                <button
+                  onClick={() => setShowChefBatchModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer shrink-0"
+                  title="Chef Daily Batch Counter & 86 List (Set 20 Thali, 15 Biryani)"
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>🍲 Daily Batch Stock</span>
+                  {restaurant?.menuItems.filter((m) => m.stockCount !== null && m.stockCount !== undefined && m.stockCount >= 0).length ? (
+                    <span className="bg-white/20 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                      {restaurant.menuItems.filter((m) => m.stockCount !== null && m.stockCount !== undefined && m.stockCount >= 0).length}
+                    </span>
+                  ) : null}
+                </button>
+
                 {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
                   <button
                     onClick={handleResetDemoOrders}
@@ -2785,7 +2917,21 @@ export default function RestaurantDashboard() {
                     : "When a customer scans a table QR code and submits an order, it appears here in real-time!"}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-                  {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
+                  <button
+                  onClick={() => setShowChefBatchModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer shrink-0"
+                  title="Chef Daily Batch Counter & 86 List (Set 20 Thali, 15 Biryani)"
+                >
+                  <ChefHat className="w-3.5 h-3.5" />
+                  <span>🍲 Daily Batch Stock</span>
+                  {restaurant?.menuItems.filter((m) => m.stockCount !== null && m.stockCount !== undefined && m.stockCount >= 0).length ? (
+                    <span className="bg-white/20 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                      {restaurant.menuItems.filter((m) => m.stockCount !== null && m.stockCount !== undefined && m.stockCount >= 0).length}
+                    </span>
+                  ) : null}
+                </button>
+
+                {(isDemoMode || restaurant?.slug === "grand-spice" || restaurant?.id === "rest-001") && (
                     <button
                       onClick={handleResetDemoOrders}
                       className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-500/20 transition active:scale-95 cursor-pointer"
@@ -2921,6 +3067,13 @@ export default function RestaurantDashboard() {
                           </div>
 
                           <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleSendWhatsAppBill(order)}
+                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-700 transition cursor-pointer"
+                              title="Send WhatsApp Digital Tax Invoice"
+                            >
+                              <Share2 className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => setSelectedKotOrder(order)}
                               className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition"
@@ -4869,13 +5022,25 @@ export default function RestaurantDashboard() {
             <div className="mt-4 flex gap-2 no-print">
               <button
                 onClick={() => setSelectedKotOrder(null)}
-                className="flex-1 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded-xl"
+                className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
               >
                 Close
               </button>
               <button
+                onClick={() => {
+                  if (selectedKotOrder) {
+                    handleSendWhatsAppBill(selectedKotOrder);
+                  }
+                }}
+                className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                title="Send WhatsApp Digital Tax Invoice"
+              >
+                <Share2 className="w-4 h-4" />
+                <span>WhatsApp Bill</span>
+              </button>
+              <button
                 onClick={() => window.print()}
-                className="flex-1 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print KOT Slip</span>
@@ -5729,107 +5894,428 @@ export default function RestaurantDashboard() {
         </div>
       )}
 
-      {/* ===================== MODAL: KITCHEN STAFF QUICK STOCK TOGGLE ===================== */}
-      {isStaffStockModalOpen && restaurant && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 max-h-[85vh] flex flex-col">
+      {/* ===================== MODAL: CHEF DAILY BATCH & 86 MANAGER ===================== */}
+      {(showChefBatchModal || isStaffStockModalOpen) && restaurant && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-2xl rounded-3xl p-5 sm:p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col border border-slate-200">
+            {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                  <Ban className="w-4 h-4" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-lg">
+                  🍲
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-slate-900">Kitchen Dish Availability</h3>
-                  <p className="text-[11px] text-slate-400">Toggle Sold Out for finished dishes. Diners cannot order unavailable items.</p>
+                  <h3 className="font-black text-base text-slate-900 flex items-center gap-2">
+                    <span>Chef Daily Batch Counter &amp; 86 List</span>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                      Live Stock Engine
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Set today&apos;s batch limits (e.g. 20 Thali, 15 Biryani). Orders auto-mark Sold Out when limit reaches 0.
+                  </p>
                 </div>
               </div>
               <button
-                onClick={() => setIsStaffStockModalOpen(false)}
-                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200"
+                onClick={() => {
+                  setShowChefBatchModal(false);
+                  setIsStaffStockModalOpen(false);
+                }}
+                className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer transition"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Search Dishes */}
-            <div className="relative mb-3 shrink-0">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search dishes (e.g. Paneer, Biryani, Naan)..."
-                value={stockModalSearch}
-                onChange={(e) => setStockModalSearch(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2 rounded-xl text-xs text-slate-900 focus:outline-none focus:border-orange-500"
-              />
+            {/* Search & Filter Row */}
+            <div className="space-y-2 mb-3 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search dish (e.g. Biryani, Thali, Paneer, बिरयानी, थाली, दाल)..."
+                  value={batchSearchQuery || stockModalSearch}
+                  onChange={(e) => {
+                    setBatchSearchQuery(e.target.value);
+                    setStockModalSearch(e.target.value);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 pl-9 pr-8 py-2 rounded-xl text-xs text-slate-900 font-medium focus:outline-none focus:border-orange-500"
+                />
+                {(batchSearchQuery || stockModalSearch) && (
+                  <button
+                    onClick={() => {
+                      setBatchSearchQuery("");
+                      setStockModalSearch("");
+                    }}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setBatchFilter("all")}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition cursor-pointer ${
+                    batchFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  All ({restaurant.menuItems.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchFilter("limited")}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition cursor-pointer ${
+                    batchFilter === "limited" ? "bg-orange-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Limited Batch Only ({restaurant.menuItems.filter((m) => m.stockCount !== null && m.stockCount !== undefined && m.stockCount > 0).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchFilter("sold_out")}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition cursor-pointer ${
+                    batchFilter === "sold_out" ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Sold Out ({restaurant.menuItems.filter((m) => !m.isAvailable || m.stockCount === 0).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchFilter("veg")}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition cursor-pointer ${
+                    batchFilter === "veg" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Veg 🥬
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBatchFilter("non_veg")}
+                  className={`px-3 py-1 rounded-lg font-bold whitespace-nowrap transition cursor-pointer ${
+                    batchFilter === "non_veg" ? "bg-red-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  Non-Veg 🍗
+                </button>
+              </div>
             </div>
 
-            {/* Dishes List */}
-            <div className="overflow-y-auto space-y-2 pr-1 flex-1">
+            {/* Dishes List with Batch Steppers and 1-Tap Presets */}
+            <div className="overflow-y-auto space-y-2.5 pr-1 flex-1">
               {restaurant.menuItems
-                .filter((item) =>
-                  stockModalSearch.trim() === "" ||
-                  item.name.toLowerCase().includes(stockModalSearch.toLowerCase().trim())
-                )
-                .map((item) => (
-                  <div
-                    key={item.id}
-                    className={`p-3 rounded-2xl border transition flex items-center justify-between gap-3 ${
-                      item.isAvailable
-                        ? "bg-slate-50 border-slate-200"
-                        : "bg-rose-50/60 border-rose-200 text-slate-500"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span
-                        className={`w-3 h-3 rounded-full shrink-0 ${
-                          item.isVeg ? "bg-emerald-500" : "bg-red-500"
-                        }`}
-                      />
-                      <div className="truncate">
-                        <span className={`text-xs font-bold block truncate ${!item.isAvailable ? "line-through text-slate-500" : "text-slate-900"}`}>
-                          {item.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {restaurant.categories.find((c) => c.id === item.categoryId)?.name || "Dish"}
-                        </span>
-                      </div>
-                    </div>
+                .filter((item) => {
+                  const q = (batchSearchQuery || stockModalSearch).toLowerCase().trim();
+                  const matchesSearch =
+                    q === "" ||
+                    item.name.toLowerCase().includes(q) ||
+                    (item.description && item.description.toLowerCase().includes(q));
 
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAvailability(item.id)}
-                      className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-extrabold transition shadow-xs flex items-center gap-1.5 ${
-                        item.isAvailable
-                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                          : "bg-rose-600 hover:bg-rose-700 text-white"
+                  if (!matchesSearch) return false;
+
+                  if (batchFilter === "limited") {
+                    return item.stockCount !== null && item.stockCount !== undefined && item.stockCount > 0;
+                  }
+                  if (batchFilter === "sold_out") {
+                    return !item.isAvailable || item.stockCount === 0;
+                  }
+                  if (batchFilter === "veg") return item.isVeg;
+                  if (batchFilter === "non_veg") return !item.isVeg;
+
+                  return true;
+                })
+                .map((item) => {
+                  const isUnlimited = item.stockCount === null || item.stockCount === undefined || item.stockCount < 0;
+                  const isSoldOut = !item.isAvailable || item.stockCount === 0;
+                  const currentStock = isUnlimited ? -1 : (item.stockCount ?? 0);
+                  const isUpdating = updatingBatchDishId === item.id;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3.5 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        isSoldOut
+                          ? "bg-rose-50/70 border-rose-200 text-slate-500"
+                          : !isUnlimited && currentStock <= 5
+                            ? "bg-amber-50/70 border-amber-200 text-slate-900"
+                            : "bg-slate-50/80 border-slate-200/80 text-slate-900"
                       }`}
                     >
-                      {item.isAvailable ? (
-                        <>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>In Stock</span>
-                        </>
-                      ) : (
-                        <>
-                          <Ban className="w-3.5 h-3.5" />
-                          <span>Sold Out</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                ))}
+                      {/* Left: Dish Info */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-3 h-3 rounded-full shrink-0 ${
+                              item.isVeg ? "bg-emerald-500" : "bg-red-500"
+                            }`}
+                          />
+                          <h4 className={`text-xs font-black truncate ${isSoldOut ? "line-through text-slate-500" : "text-slate-900"}`}>
+                            {item.name}
+                          </h4>
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {restaurant.currencySymbol}{item.price}
+                          </span>
+                        </div>
+
+                        {/* Status Badges */}
+                        <div className="flex items-center gap-2 mt-1">
+                          {isSoldOut ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200">
+                              <Ban className="w-3 h-3" />
+                              <span>Sold Out (0 portions)</span>
+                            </span>
+                          ) : !isUnlimited ? (
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-md border ${
+                              currentStock <= 5
+                                ? "text-amber-800 bg-amber-100 border-amber-300 animate-pulse"
+                                : "text-emerald-800 bg-emerald-100 border-emerald-300"
+                            }`}>
+                              <span>{currentStock <= 5 ? "🔥 Low:" : "🟢"}</span>
+                              <span>{currentStock} portions remaining</span>
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md">
+                              ♾️ Unlimited Portions
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400">
+                            {restaurant.categories.find((c) => c.id === item.categoryId)?.name || "Dish"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Quick Batch Presets & Steppers */}
+                      <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                        {/* 1-Tap Quick Batch Presets */}
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, 15)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-orange-100 hover:text-orange-900 text-slate-700 text-[10px] font-black rounded-lg transition active:scale-95 cursor-pointer disabled:opacity-50"
+                            title="Set today's batch to 15 portions"
+                          >
+                            15
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, 20)}
+                            className="px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-900 text-[10px] font-black rounded-lg transition active:scale-95 cursor-pointer disabled:opacity-50"
+                            title="Set today's batch to 20 portions (Standard Thali/Biryani batch)"
+                          >
+                            20
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, 30)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-orange-100 hover:text-orange-900 text-slate-700 text-[10px] font-black rounded-lg transition active:scale-95 cursor-pointer disabled:opacity-50"
+                            title="Set today's batch to 30 portions"
+                          >
+                            30
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, 50)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-orange-100 hover:text-orange-900 text-slate-700 text-[10px] font-black rounded-lg transition active:scale-95 cursor-pointer disabled:opacity-50"
+                            title="Set today's batch to 50 portions"
+                          >
+                            50
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, -1)}
+                            className={`px-2 py-1 text-[10px] font-black rounded-lg transition active:scale-95 cursor-pointer disabled:opacity-50 ${
+                              isUnlimited ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            }`}
+                            title="Set to Unlimited"
+                          >
+                            ♾️
+                          </button>
+                        </div>
+
+                        {/* Numeric Stepper: [-5] [-1] [count] [+1] [+5] */}
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                          <button
+                            type="button"
+                            disabled={isUpdating || isSoldOut}
+                            onClick={() => handleUpdateBatchStock(item.id, Math.max(0, (currentStock < 0 ? 0 : currentStock) - 5))}
+                            className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-[10px] rounded-lg transition cursor-pointer disabled:opacity-40"
+                            title="Subtract 5 portions"
+                          >
+                            -5
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating || isSoldOut}
+                            onClick={() => handleUpdateBatchStock(item.id, Math.max(0, (currentStock < 0 ? 0 : currentStock) - 1))}
+                            className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-lg transition cursor-pointer disabled:opacity-40"
+                            title="Subtract 1 portion"
+                          >
+                            -
+                          </button>
+
+                          <span className="w-8 text-center text-xs font-black text-slate-900">
+                            {isUpdating ? "…" : isUnlimited ? "♾️" : currentStock}
+                          </span>
+
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, (currentStock < 0 ? 0 : currentStock) + 1)}
+                            className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-lg transition cursor-pointer disabled:opacity-40"
+                            title="Add 1 portion"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdating}
+                            onClick={() => handleUpdateBatchStock(item.id, (currentStock < 0 ? 0 : currentStock) + 5)}
+                            className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-[10px] rounded-lg transition cursor-pointer disabled:opacity-40"
+                            title="Add 5 portions"
+                          >
+                            +5
+                          </button>
+                        </div>
+
+                        {/* Sold Out / In Stock Quick Toggle */}
+                        <button
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() => handleUpdateBatchStock(item.id, isSoldOut ? 20 : 0)}
+                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black transition shadow-xs flex items-center gap-1 cursor-pointer disabled:opacity-50 ${
+                            isSoldOut
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              : "bg-rose-600 hover:bg-rose-700 text-white"
+                          }`}
+                          title={isSoldOut ? "Restore in stock (batch 20)" : "Mark Sold Out immediately (86 item)"}
+                        >
+                          {isSoldOut ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Restock</span>
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="w-3 h-3" />
+                              <span>Sold Out</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
 
+            {/* Modal Footer */}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between mt-3 text-[11px] text-slate-400 shrink-0">
-              <span>Prices and dish modifications require Owner login.</span>
+              <span className="flex items-center gap-1">
+                <span>⚡ Real-time sync:</span>
+                <strong className="text-slate-600">Diner QR menus instantly update with remaining stock.</strong>
+              </span>
               <button
                 type="button"
-                onClick={() => setIsStaffStockModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-black text-white rounded-xl font-bold"
+                onClick={() => {
+                  setShowChefBatchModal(false);
+                  setIsStaffStockModalOpen(false);
+                }}
+                className="px-5 py-2 bg-slate-900 hover:bg-black text-white rounded-xl font-bold cursor-pointer transition shadow-xs"
               >
                 Done
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: SEND WHATSAPP DIGITAL TAX INVOICE ===================== */}
+      {whatsAppModalOrder && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                  💬
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Send WhatsApp Tax Invoice</h3>
+                  <p className="text-[11px] text-slate-500">Official digital bill with verified PDF download</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setWhatsAppModalOrder(null)}
+                className="p-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Order Brief Card */}
+            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 mb-4 space-y-1.5 text-xs">
+              <div className="flex justify-between font-bold text-slate-800">
+                <span>Order #{whatsAppModalOrder.id.slice(-4)} • {whatsAppModalOrder.tableNumber}</span>
+                <span className="text-sm font-black text-slate-900">{restaurant?.currencySymbol || "₹"}{whatsAppModalOrder.total}</span>
+              </div>
+              <div className="text-[11px] text-slate-500">
+                Diner: <strong className="text-slate-700">{whatsAppModalOrder.customerName || "Walk-in Guest"}</strong> • {whatsAppModalOrder.items.length} dishes
+              </div>
+              <div className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block font-bold">
+                🔗 Digital Bill URL: /receipt/{whatsAppModalOrder.id}
+              </div>
+            </div>
+
+            {/* Phone Number Form */}
+            <form onSubmit={handleConfirmWhatsAppSend} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Customer&apos;s WhatsApp Number *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-500">
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    placeholder="9876543210"
+                    value={whatsAppPhoneInput}
+                    onChange={(e) => setWhatsAppPhoneInput(e.target.value.replace(/\D/g, ""))}
+                    className="w-full bg-slate-50 border border-slate-200 pl-12 pr-4 py-2.5 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-emerald-500"
+                    autoFocus
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  10-digit Indian WhatsApp mobile number. Customer receives itemized bill + printable PDF link.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setWhatsAppModalOrder(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingWhatsApp || whatsAppPhoneInput.length < 10}
+                  className="flex-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{isSendingWhatsApp ? "Sending Bill..." : "Send Official Tax Invoice 📲"}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
