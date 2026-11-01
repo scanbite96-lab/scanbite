@@ -345,6 +345,13 @@
     - **Super Admin Command Center (`/founder-hq`):** Removed the master passcode leak (`placeholder="Enter Master Passcode (default: admin2026)"` and subtitle `Default platform founder passcode: admin2026`), securing the master gate for live production use. Sanitized password placeholders and helper texts in the restaurant credentials modal.
     - **Auth & Staff APIs (`/api/auth` & `/api/staff`):** Removed default password leakage from the 401 Unauthorized response (`"Incorrect password. Please try again or use default: admin123"` ➔ `"Incorrect password. Please try again."`), and updated PIN error examples to generic non-default values (`5678`).
 
+29. **Marketing Landing Page Navbar Layout, Language Toggle & Visual Polish (Verified Nov 1, 2026):**
+    - **Eliminated Navbar Collision & Overlap:** Resolved spacing collision where the language toggle button touched/overlapped the "FAQ" link on laptop screens (1024px-1366px). Added responsive `gap-3.5 xl:gap-6 2xl:gap-7`, `whitespace-nowrap`, and guaranteed container padding.
+    - **Brand Logo & Features Separation:** Added `shrink-0 mr-2 sm:mr-4 xl:mr-8` to the brand logo link and `ml-2 px-2 py-0.5` to the SaaS badge, completely preventing the "ScanBite SaaS" lockup from sticking to the "Features" navigation link.
+    - **Cross-Platform Emoji Font Sanitization:** Fixed Windows emoji fallback bug that rendered `🇮🇳` as text letters `IN` and `🇬🇧` as `GB` (`文A IN हिंदी`). Replaced with a clean, universal `[文A हिंदी]` / `[文A English]` toggle with smooth active transitions.
+    - **Hero Demo Buttons Cleanup:** Eliminated duplicate emoji rendering (`📱` and `🍳`) inside the button labels that clashed with the existing Lucide SVG `<Smartphone />` and `<ChefHat />` icons.
+    - **Full Bilingual Footer & ROI Calculator Polish:** Translated dynamic ROI calculator units (Tables, Seatings / Day, Staff Hours Saved) and footer product demo & core features links into natural Hindi when language is set to `hi`.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

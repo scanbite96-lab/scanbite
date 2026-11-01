@@ -70,58 +70,60 @@ export default function SaaSPlatformHome() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white">
       {/* Top Navbar */}
-      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-orange-600/30">
+      <header className="border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-3 md:gap-6">
+          {/* Brand Logo & SaaS Badge */}
+          <Link href="/" className="flex items-center gap-2.5 shrink-0 mr-2 sm:mr-4 xl:mr-8 group">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-base sm:text-lg shadow-lg shadow-orange-600/30 group-hover:scale-105 transition">
               ⚡
             </div>
-            <div>
-              <span className="font-extrabold text-lg text-white tracking-tight">ScanBite</span>
-              <span className="text-[10px] ml-1.5 font-bold uppercase tracking-widest text-orange-400 bg-orange-950/60 border border-orange-800/60 px-1.5 py-0.5 rounded">
+            <div className="flex items-center">
+              <span className="font-extrabold text-base sm:text-lg text-white tracking-tight">ScanBite</span>
+              <span className="text-[10px] ml-2 font-bold uppercase tracking-wider text-orange-400 bg-orange-950/70 border border-orange-800/70 px-2 py-0.5 rounded-md">
                 SaaS
               </span>
             </div>
           </Link>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-7 text-sm font-medium text-slate-300">
-            <a href="#features" className="hover:text-orange-400 transition">
+          {/* Desktop Navigation Links - Centered with guaranteed margins & responsive gaps */}
+          <nav className="hidden lg:flex items-center gap-3.5 xl:gap-6 2xl:gap-7 text-xs xl:text-sm font-medium text-slate-300 mx-auto px-2">
+            <a href="#features" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "फीचर्स" : "Features"}
             </a>
-            <a href="#simulator" className="hover:text-orange-400 transition">
+            <a href="#simulator" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "लाइव अनुभव" : "Live Experience"}
             </a>
-            <a href="#how-it-works" className="hover:text-orange-400 transition">
+            <a href="#how-it-works" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "कार्यप्रणाली" : "How it Works"}
             </a>
-            <a href="#calculator" className="hover:text-orange-400 transition">
+            <a href="#calculator" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "मुनाफ़ा कैलकुलेटर" : "ROI Calculator"}
             </a>
-            <a href="#pricing" className="hover:text-orange-400 transition">
+            <a href="#pricing" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "प्लान्स व दाम" : "Pricing"}
             </a>
-            <a href="#faq" className="hover:text-orange-400 transition">
+            <a href="#faq" className="hover:text-orange-400 transition whitespace-nowrap">
               {lang === "hi" ? "सवाल-जवाब" : "FAQ"}
             </a>
           </nav>
 
           {/* Right Action Controls */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Language Switcher */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto lg:ml-0">
+            {/* Language Switcher - Clean Devanagari / English toggle without Windows IN/GB emoji fallback artifacts */}
             <button
               onClick={toggleLanguage}
               aria-label="Toggle Language"
-              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition active:scale-95"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/90 hover:border-slate-600 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition active:scale-95 shadow-sm"
+              title={lang === "en" ? "हिंदी में बदलें" : "Switch to English"}
             >
-              <Languages className="w-3.5 h-3.5 text-orange-400" />
-              <span>{lang === "en" ? "🇮🇳 हिंदी" : "🇬🇧 English"}</span>
+              <Languages className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <span className="font-medium tracking-wide">{lang === "en" ? "हिंदी" : "English"}</span>
             </button>
 
-            {/* Free Trial / Register CTA */}
+            {/* Free Trial / Register CTA - Shown on xl+ to prevent navbar squeeze on 1366px screens */}
             <Link
               href="/register"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/40 transition active:scale-95 shadow-sm shadow-orange-500/10"
+              className="hidden xl:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-bold text-orange-400 border border-orange-500/40 hover:border-orange-500/70 transition active:scale-95 shadow-sm shadow-orange-500/10"
             >
               <span>{lang === "hi" ? "फ्री सेटअप" : "Get ScanBite Free"}</span>
             </Link>
@@ -129,10 +131,10 @@ export default function SaaSPlatformHome() {
             {/* Live Demo Button */}
             <Link
               href="/dashboard?demo=true"
-              className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-1.5"
+              className="bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs sm:text-sm px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl shadow-lg shadow-orange-600/25 transition active:scale-95 flex items-center gap-1.5 shrink-0"
             >
               <span>{lang === "hi" ? "लाइव डेमो" : "Explore Demo"}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="w-3.5 h-3.5 shrink-0" />
             </Link>
 
             {/* Mobile Menu Hamburger */}
@@ -255,18 +257,18 @@ export default function SaaSPlatformHome() {
               target="_blank"
               className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2"
             >
-              <Smartphone className="w-4 h-4 shrink-0" />
-              <span>{lang === "hi" ? "📱 कस्टमर टेबल मेन्यू (Table 4 Demo)" : "📱 Customer QR Menu (Table 4 Demo)"}</span>
+              <Smartphone className="w-4 h-4 shrink-0 text-slate-950" />
+              <span>{lang === "hi" ? "कस्टमर टेबल मेन्यू (Table 4 Demo)" : "Customer QR Menu (Table 4 Demo)"}</span>
             </Link>
 
             {/* Pillar 2: Kitchen KDS & Dashboard */}
             <Link
               href="/dashboard?demo=true"
               target="_blank"
-              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 hover:border-slate-600 transition active:scale-95 flex items-center justify-center gap-2"
             >
               <ChefHat className="w-4 h-4 text-orange-400 shrink-0" />
-              <span>{lang === "hi" ? "🍳 किचन KDS व ओनर कंसोल (Live Demo)" : "🍳 Kitchen KDS & Owner Console (Live Demo)"}</span>
+              <span>{lang === "hi" ? "किचन KDS व ओनर कंसोल (Live Demo)" : "Kitchen KDS & Owner Console (Live Demo)"}</span>
             </Link>
           </div>
 
@@ -817,7 +819,9 @@ export default function SaaSPlatformHome() {
                   <span className="text-slate-300">
                     {lang === "hi" ? "कुल डाइनिंग टेबल्स:" : "Total Dining Tables:"}
                   </span>
-                  <span className="text-orange-400 text-sm font-black">{tablesCount} Tables</span>
+                  <span className="text-orange-400 text-sm font-black">
+                    {tablesCount} {lang === "hi" ? "टेबल्स" : "Tables"}
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -855,7 +859,9 @@ export default function SaaSPlatformHome() {
                   <span className="text-slate-300">
                     {lang === "hi" ? "प्रति टेबल दैनिक ग्राहक फेरे (Daily Turns):" : "Daily Turns per Table:"}
                   </span>
-                  <span className="text-sky-400 text-sm font-black">{dailyTurnover} Seatings / Day</span>
+                  <span className="text-sky-400 text-sm font-black">
+                    {dailyTurnover} {lang === "hi" ? "सिटिंग्स / दिन" : "Seatings / Day"}
+                  </span>
                 </div>
                 <input
                   type="range"
@@ -882,7 +888,9 @@ export default function SaaSPlatformHome() {
               <div className="pt-3 border-t border-slate-800 space-y-2 text-xs">
                 <div className="flex justify-between text-slate-300">
                   <span>{lang === "hi" ? "मासिक वेटर समय की बचत:" : "Monthly Staff Hours Saved:"}</span>
-                  <span className="font-bold text-white">{savedWaiterHours} hrs / mo</span>
+                  <span className="font-bold text-white">
+                    {savedWaiterHours} {lang === "hi" ? "घंटे / माह" : "hrs / mo"}
+                  </span>
                 </div>
                 <div className="flex justify-between text-slate-300">
                   <span>{lang === "hi" ? "सॉफ्टवेयर लागत रिकवरी:" : "ROI Payback Speed:"}</span>
@@ -1223,17 +1231,17 @@ export default function SaaSPlatformHome() {
               <ul className="space-y-2 text-xs">
                 <li>
                   <Link href="/r/grand-spice/t/tbl-4" target="_blank" className="hover:text-orange-400 transition">
-                    📱 Customer QR Menu Demo
+                    📱 {lang === "hi" ? "कस्टमर क्यूआर मेन्यू डेमो" : "Customer QR Menu Demo"}
                   </Link>
                 </li>
                 <li>
                   <Link href="/dashboard?demo=true" target="_blank" className="hover:text-orange-400 transition">
-                    🍳 Kitchen &amp; Owner Console Demo
+                    🍳 {lang === "hi" ? "किचन KDS व ओनर कंसोल डेमो" : "Kitchen & Owner Console Demo"}
                   </Link>
                 </li>
                 <li>
                   <Link href="/register" className="hover:text-orange-400 transition">
-                    🚀 Free 14-Day Trial Setup
+                    🚀 {lang === "hi" ? "फ्री 14-दिन ट्रायल सेटअप" : "Free 14-Day Trial Setup"}
                   </Link>
                 </li>
               </ul>
@@ -1245,11 +1253,11 @@ export default function SaaSPlatformHome() {
                 {lang === "hi" ? "मुख्य क्षमताएं" : "Core Features"}
               </div>
               <ul className="space-y-2 text-xs">
-                <li><a href="#features" className="hover:text-orange-400 transition">Group Table Cart</a></li>
-                <li><a href="#features" className="hover:text-orange-400 transition">Smart Split Bill (UPI)</a></li>
-                <li><a href="#features" className="hover:text-orange-400 transition">Live Table Floor Grid</a></li>
-                <li><a href="#features" className="hover:text-orange-400 transition">Thermal KOT Slips</a></li>
-                <li><a href="#features" className="hover:text-orange-400 transition">Bilingual English / हिंदी</a></li>
+                <li><a href="#features" className="hover:text-orange-400 transition">{lang === "hi" ? "ग्रुप टेबल कार्ट" : "Group Table Cart"}</a></li>
+                <li><a href="#features" className="hover:text-orange-400 transition">{lang === "hi" ? "स्मार्ट बिल स्प्लिट (UPI)" : "Smart Split Bill (UPI)"}</a></li>
+                <li><a href="#features" className="hover:text-orange-400 transition">{lang === "hi" ? "लाइव टेबल फ्लोर ग्रिड" : "Live Table Floor Grid"}</a></li>
+                <li><a href="#features" className="hover:text-orange-400 transition">{lang === "hi" ? "थर्मल KOT प्रिंट स्लिप" : "Thermal KOT Slips"}</a></li>
+                <li><a href="#features" className="hover:text-orange-400 transition">{lang === "hi" ? "द्विभाषी (English / हिंदी)" : "Bilingual English / हिंदी"}</a></li>
               </ul>
             </div>
 

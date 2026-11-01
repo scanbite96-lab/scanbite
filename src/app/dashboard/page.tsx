@@ -66,7 +66,12 @@ import {
   Smartphone,
   LayoutGrid,
   Share2,
-  MessageCircle
+  MessageCircle,
+  Headphones,
+  LifeBuoy,
+  PhoneCall,
+  Send,
+  HelpCircle
 } from "lucide-react";
 
 export default function RestaurantDashboard() {
@@ -127,6 +132,15 @@ export default function RestaurantDashboard() {
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState<Order | null>(null);
   const [whatsAppPhoneInput, setWhatsAppPhoneInput] = useState("");
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
+
+  // Partner 24x7 Support & Helpline Desk
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [ticketCategory, setTicketCategory] = useState("Sound & Chime Alert Issue");
+  const [ticketMessage, setTicketMessage] = useState("");
+  const [ticketPhone, setTicketPhone] = useState("");
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+  const [ticketSuccessMsg, setTicketSuccessMsg] = useState<string | null>(null);
+  const [quickFixFeedback, setQuickFixFeedback] = useState<string | null>(null);
 
   const isOwner = authUser?.role === "owner";
   const isStaff = authUser?.role === "staff";
@@ -1275,6 +1289,39 @@ export default function RestaurantDashboard() {
     }
   };
 
+  // Handle Raising Emergency Support Ticket
+  const handleRaiseSupportTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketMessage.trim() || !restaurant) return;
+    setIsSubmittingTicket(true);
+    setTicketSuccessMsg(null);
+    try {
+      const res = await fetch("/api/inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurantName: restaurant.name,
+          ownerName: `${authUser?.ownerName || restaurant.ownerName || "Partner"} (Live Dashboard Ticket)`,
+          phone: ticketPhone.trim() || restaurant.phone || "9876543210",
+          city: restaurant.slug,
+          tablesCount: `${restaurant.tables.length} tables`,
+          notes: `🚨 [URGENT PARTNER SUPPORT TICKET - ${ticketCategory}]\n\nIssue Description:\n${ticketMessage.trim()}\n\nRestaurant: ${restaurant.name} (${restaurant.slug})\nSubmitted by: ${authUser?.ownerName || restaurant.ownerName || "Owner"} at ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+        }),
+      });
+      if (res.ok) {
+        setTicketSuccessMsg("✅ Aapki emergency support ticket direct Founder & Engineering Team ko dispatch ho gayi hai! Hum jald se jald aapse WhatsApp / Call par rabta karenge.");
+        setTicketMessage("");
+        showToast("Support ticket dispatched to Founder HQ!", "success");
+      } else {
+        showToast("Failed to submit ticket. Please click WhatsApp Helpline above.", "error");
+      }
+    } catch {
+      showToast("Network error submitting ticket. Please click WhatsApp Helpline.", "error");
+    } finally {
+      setIsSubmittingTicket(false);
+    }
+  };
+
   // Add Table Handler
   const handleAddTableSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2384,6 +2431,21 @@ export default function RestaurantDashboard() {
                 >
                   <ChefHat className="w-3.5 h-3.5 text-orange-400" />
                   <span className="hidden sm:inline">Daily Batch Stock</span>
+                </button>
+
+                {/* 24x7 Partner Support & Emergency Helpline Button */}
+                <button
+                  onClick={() => {
+                    setTicketPhone(restaurant?.phone || "");
+                    setTicketSuccessMsg(null);
+                    setQuickFixFeedback(null);
+                    setShowSupportModal(true);
+                  }}
+                  className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap cursor-pointer active:scale-95"
+                  title="ScanBite 24x7 Partner Helpline & Instant Support Desk"
+                >
+                  <Headphones className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">24x7 Helpline</span>
                 </button>
 
                 {/* User Account Info & Sign Out */}
