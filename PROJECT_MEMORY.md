@@ -339,6 +339,12 @@
       8. Cloudflare Public Tunnel Gateway: Verified all public endpoints respond HTTP 200 OK globally.
     - **Production Build:** All 23 static & dynamic App Router routes compiled with 0 errors (`cmd /c "npm run build"`).
 
+28. **Production Login Security Hardening & Dummy Credentials Sanitization (Verified Nov 1, 2026):**
+    - **Owner & Kitchen Dashboard Login (`/dashboard`):** Purged all dummy credentials boxes ("⚡ Quick Demo Fast Access" with `admin123` and `1234`), deleted the "Default PIN is 1234" helper text under the PIN input, and removed the unauthenticated demo bypass banner from the live partner login modal.
+    - **Mobile Waiter / Captain Login (`/waiter`):** Completely removed the "1-Tap Demo Captain Login (Amit Waiter - PIN 2345)" button and the "Default restaurant staff PIN: 1234" disclosure text, replacing them with a clean, discreet navigation link to the dashboard.
+    - **Super Admin Command Center (`/founder-hq`):** Removed the master passcode leak (`placeholder="Enter Master Passcode (default: admin2026)"` and subtitle `Default platform founder passcode: admin2026`), securing the master gate for live production use. Sanitized password placeholders and helper texts in the restaurant credentials modal.
+    - **Auth & Staff APIs (`/api/auth` & `/api/staff`):** Removed default password leakage from the 401 Unauthorized response (`"Incorrect password. Please try again or use default: admin123"` ➔ `"Incorrect password. Please try again."`), and updated PIN error examples to generic non-default values (`5678`).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     const cleanPin = String(pin).trim();
     if (!/^\d{4}$/.test(cleanPin)) {
-      return NextResponse.json({ error: "PIN must be exactly 4 digits (e.g. 1234)." }, { status: 400 });
+      return NextResponse.json({ error: "PIN must be exactly 4 digits (e.g. 5678)." }, { status: 400 });
     }
 
     // Smart default permissions based on role if not explicitly provided
@@ -305,7 +305,7 @@ export async function PATCH(request: NextRequest) {
     if (pin !== undefined) {
       const cleanPin = String(pin).trim();
       if (!/^\d{4}$/.test(cleanPin)) {
-        return NextResponse.json({ error: "PIN must be exactly 4 digits (e.g. 1234)." }, { status: 400 });
+        return NextResponse.json({ error: "PIN must be exactly 4 digits (e.g. 5678)." }, { status: 400 });
       }
       // Check duplicate PIN
       const existing = await prisma.staff.findFirst({
