@@ -1048,7 +1048,7 @@ export default function SuperAdminDashboard() {
                 <input
                   type={showMasterPass ? "text" : "password"}
                   required
-                  placeholder="Enter Master Passcode (default: admin2026)"
+                  placeholder="Enter Master Security Key"
                   value={masterPassInput}
                   onChange={(e) => setMasterPassInput(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-2xl focus:outline-none focus:border-orange-500 font-mono"
@@ -1061,9 +1061,6 @@ export default function SuperAdminDashboard() {
                   {showMasterPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-[11px] text-slate-500 mt-1.5">
-                Default platform founder passcode: <span className="font-mono text-orange-400">admin2026</span>
-              </p>
             </div>
 
             <button
@@ -2663,7 +2660,7 @@ export default function SuperAdminDashboard() {
                 <div className="relative">
                   <input
                     type={showCredsPassword ? "text" : "password"}
-                    placeholder={selectedRestForCreds.password?.startsWith("scrypt:") ? "•••••••• (Leave blank to keep existing password)" : "Enter password (e.g. admin123)"}
+                    placeholder={selectedRestForCreds.password?.startsWith("scrypt:") ? "•••••••• (Leave blank to keep existing password)" : "Enter new password (min 6 characters)"}
                     value={credsPassword}
                     onChange={(e) => setCredsPassword(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-orange-500 font-mono"
@@ -2679,7 +2676,7 @@ export default function SuperAdminDashboard() {
                 <p className="text-[10px] text-slate-500 mt-1">
                   {selectedRestForCreds.password?.startsWith("scrypt:")
                     ? "Existing password securely hashed. Enter a new password to overwrite, or leave empty to keep."
-                    : "Default owner login password: admin123"}
+                    : "Set a secure password for this restaurant owner."}
                 </p>
               </div>
 
@@ -2693,7 +2690,7 @@ export default function SuperAdminDashboard() {
                   required
                   value={credsStaffPin}
                   onChange={(e) => setCredsStaffPin(e.target.value.replace(/\D/g, ""))}
-                  placeholder="1234"
+                  placeholder="4-digit PIN"
                   className="w-full bg-slate-950 border border-slate-800 text-cyan-300 text-sm px-3 py-2 rounded-xl focus:outline-none focus:border-orange-500 font-mono tracking-widest font-black"
                 />
                 <p className="text-[10px] text-slate-500 mt-0.5">

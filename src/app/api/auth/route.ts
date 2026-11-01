@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
 
       if (!isValid) {
         return NextResponse.json(
-          { error: "Incorrect password. Please try again or use default: admin123" },
+          { error: "Incorrect password. Please try again." },
           { status: 401 }
         );
       }

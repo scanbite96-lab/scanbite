@@ -455,7 +455,7 @@ export default function RestaurantDashboard() {
           setActiveTab("kds");
         }
       } else {
-        setLoginError(data.error || "Incorrect 4-digit staff PIN. Default is 1234.");
+        setLoginError(data.error || "Incorrect 4-digit staff PIN. Please try again.");
       }
     } catch {
       setLoginError("Failed to connect to authentication service.");
@@ -2079,55 +2079,6 @@ export default function RestaurantDashboard() {
               </p>
             </div>
 
-            {/* 1-Click Instant Demo Button */}
-            <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-orange-600/15 via-amber-600/15 to-orange-600/15 border border-orange-500/30 text-center">
-              <div className="flex items-center justify-center gap-1.5 text-xs font-black text-orange-400 mb-1">
-                <Sparkles className="w-4 h-4" />
-                <span>Just exploring ScanBite?</span>
-              </div>
-              <p className="text-[11px] text-slate-400 mb-3">
-                No password required. Test our live Kitchen KDS, staff management, and menu stock in 1 click!
-              </p>
-              <button
-                type="button"
-                onClick={async () => {
-                  setIsDemoMode(true);
-                  try {
-                    await fetch("/api/auth", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: "demo_login" }),
-                    });
-                  } catch {}
-                  const demoUser: AuthUser = {
-                    id: "rest-001",
-                    name: "The Grand Spice Kitchen",
-                    slug: "grand-spice",
-                    ownerEmail: "owner@grandspice.com",
-                    ownerName: "Rajesh Sharma",
-                    role: "owner",
-                    staffPin: "1234",
-                    permissions: {
-                      canManageOrders: true,
-                      canManageMenu: true,
-                      canManageBilling: true,
-                      canManageRequests: true,
-                    },
-                  };
-                  setAuthUser(demoUser);
-                  setRestaurantSlug("grand-spice");
-                  setStaffRestaurantSlug("grand-spice");
-                  setNewOwnerEmail("owner@grandspice.com");
-                  setNewOwnerName("Rajesh Sharma");
-                  setActiveTab("kds");
-                }}
-                className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-orange-500/25 transition active:scale-95"
-              >
-                <ChefHat className="w-4 h-4" />
-                <span>Enter Live Interactive Demo (No Login Needed) →</span>
-              </button>
-            </div>
-
             {/* Tab Switcher: Owner vs Staff */}
             <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-6">
               <button
@@ -2252,7 +2203,6 @@ export default function RestaurantDashboard() {
                     onChange={(e) => setStaffPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
                     className="w-full text-center text-3xl tracking-widest font-mono bg-slate-950 border border-slate-700 focus:border-orange-500 text-white rounded-2xl py-2.5 outline-none font-bold"
                   />
-                  <p className="text-[10px] text-slate-500 text-center mt-1">Default PIN is 1234</p>
                 </div>
 
                 <button
@@ -2264,40 +2214,6 @@ export default function RestaurantDashboard() {
                 </button>
               </form>
             )}
-
-            {/* Quick 1-Tap Demo Credentials Box */}
-            <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-              <p className="text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-wider">
-                ⚡ Quick Demo Fast Access
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthTab("owner");
-                    setLoginIdentifier("owner@grandspice.com");
-                    setLoginPassword("admin123");
-                  }}
-                  className="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-left text-slate-300 hover:text-white transition"
-                >
-                  <div className="font-bold text-orange-400">👑 Grand Spice Owner</div>
-                  <div className="text-[10px] text-slate-500">Pass: admin123</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthTab("staff");
-                    setStaffRestaurantSlug("grand-spice");
-                    setStaffPinInput("1234");
-                  }}
-                  className="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-[11px] text-left text-slate-300 hover:text-white transition"
-                >
-                  <div className="font-bold text-amber-400">👨‍🍳 Kitchen Staff</div>
-                  <div className="text-[10px] text-slate-500">PIN: 1234</div>
-                </button>
-              </div>
-            </div>
           </div>
 
           <div className="text-center mt-6">
@@ -4525,7 +4441,7 @@ export default function RestaurantDashboard() {
                   </div>
                   <h3 className="font-bold text-sm text-slate-800">No individual staff members added yet</h3>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4">
-                    Your team is currently using the restaurant default PIN ({(restaurant as any).staffPin || "1234"}). Add staff members to give individual roles, PINs, and granular rights!
+                    Your team is currently using the restaurant master staff PIN. Add individual staff members to give unique roles, personal PINs, and granular rights!
                   </p>
                   <button
                     onClick={() => {
@@ -4899,7 +4815,7 @@ export default function RestaurantDashboard() {
                     <input
                       type="text"
                       maxLength={4}
-                      placeholder="Default: 1234"
+                      placeholder="4-digit PIN (e.g. 5678)"
                       value={newStaffPin}
                       onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
                       className="w-full bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-slate-900 font-mono tracking-widest text-center font-bold focus:outline-none focus:border-orange-500"

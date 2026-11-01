@@ -48,8 +48,13 @@
 - **Live Order Timeline:** Real-time status tracker (Placed ⏳ -> Cooking 👨‍🍳 -> Ready 🔔 -> Served ✅).
 - **Meal Rating:** 5-Star feedback with automatic Google Review prompt for 4+ stars.
 - **Smart Page Visibility Polling:** Real-time sync (3.5s) pauses automatically when the customer locks their phone or backgrounds the tab (`document.hidden`), and refreshes instantly on return.
+- **Portion Scarcity & Batch Limit Guards:** Real-time inventory monitoring showing scarcity badges (`🔥 Only X left today!`), automatically disallowing order additions once a dish's daily batch is sold out, and linking directly to verified digital tax invoices.
 
 ### 2. Kitchen & Owner Dashboard (`/dashboard`)
+- **Chef Daily Batch & 86 Manager (`/dashboard?tab=kds`):** Direct kitchen console for chefs and managers to set today's preparation limits (e.g., "आज 20 थाली या 15 बिरयानी बनी है"). Features 1-tap presets (`[ 15 ]`, `[ 20 ]`, `[ 30 ]`, `[ 50 ]`, `[ ♾️ Unlim ]`, `[ 🔴 Sold Out ]`), steppers (`[-5]`, `[-1]`, `[+1]`, `[+5]`), and instant live sync via `PATCH /api/menu`. When orders arrive, inventory auto-decrements and flips dishes to `Sold Out` at 0 portions.
+- **Automated WhatsApp Digital Bill & Tax Invoice PDF (`/receipt/[id]`):**
+  - Dedicated printable tax invoice and digital receipt page at `/receipt/[id]` with print-optimized CSS (`@media print`), itemized breakdowns, portion variants, addons, GST, discounts, and payment status stamps.
+  - 1-tap "📲 WhatsApp Bill" action on every KDS ticket, Live Order card, and inside the Thermal KOT Print Modal. Dispatches formatted WhatsApp messages with verified digital PDF invoice links via `/api/orders/[id]/send-whatsapp`.
 - **Kitchen Display System (KDS):** Live order cards with item checklist, portion sizes, add-ons, and diner names (`👤 {orderedByName}`).
 - **Thermal KOT Slip:** One-click ESC/POS styled thermal print modal including `(Diner: {orderedByName})` and customer phone number.
 - **Sound Alert (Beep / Chime):** Web Audio Synthesizer loud double-chime on incoming orders with Sound ON/OFF toggle in navbar.

@@ -332,6 +332,36 @@ export default function CustomerTableMenu() {
     }
   };
 
+  // Generate WhatsApp Bill Receipt Link
+  const generateWhatsAppBillUri = (ord: Order) => {
+    if (!restaurant) return "#";
+    const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
+    const itemsList = (ord.items || []).map((it) => {
+      const variantStr = it.variantName ? ` [${it.variantName}]` : "";
+      const addonsStr = it.selectedAddons && it.selectedAddons.length > 0
+        ? `\n   ↳ + ${(it.selectedAddons as any[]).map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}`
+        : "";
+      return `• ${it.quantity}x ${it.name}${variantStr} (${restaurant.currencySymbol}${it.price * it.quantity})${addonsStr}`;
+    }).join("\n");
+    const discountText = ord.discount && ord.discount > 0 ? `\n🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
+    const text = `🍽️ *${restaurant.name}*\n` +
+      `📍 Table: ${ord.tableNumber}\n` +
+      `🧾 Order: #${ord.id.slice(-4)}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `${itemsList}\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Subtotal: ${restaurant.currencySymbol}${ord.subtotal}\n` +
+      `Taxes (GST ${restaurant.taxRatePercent}%): ${restaurant.currencySymbol}${ord.tax}` +
+      `${discountText}\n` +
+      `*Grand Total: ${restaurant.currencySymbol}${ord.total}*\n` +
+      `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})\n` +
+      (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}\n` : "") +
+      `\n🧾 *Official Tax Invoice PDF Bill:*\n${typeof window !== "undefined" ? window.location.origin : "https://scanbite-plum.vercel.app"}/receipt/${ord.id}\n` +
+      `\nThank you for dining with us! 🙏`;
+
+    return phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
+
   // 4. Fetch table orders & notify on live status changes
   const fetchOrders = async () => {
     if (!restaurant || !currentTable) return;
@@ -359,9 +389,42 @@ export default function CustomerTableMenu() {
           previousStatusMap.current[ord.id] = ord.status;
         });
 
+        // Cache last paid order receipt if present
+        const paidOrd = data.find((o) => o.paymentStatus === "paid");
+        if (paidOrd) {
+          const receiptObj = {
+            id: paidOrd.id,
+            total: paidOrd.total,
+            itemsCount: paidOrd.items?.length || 1,
+            tableNumber: currentTable.tableNumber,
+            whatsappUri: generateWhatsAppBillUri(paidOrd),
+            timestamp: Date.now(),
+          };
+          setLastReceipt(receiptObj);
+          try {
+            localStorage.setItem(`scanbite_last_receipt_${slug}_${tableParam}`, JSON.stringify(receiptObj));
+          } catch {}
+        }
+
+        // When table active orders drop to 0, close orders drawer and reset to fresh menu
         if (prevOrdersCountRef.current > 0 && data.length === 0) {
+          if (tableOrders.length > 0) {
+            const lastCompleted = tableOrders[0];
+            const receiptObj = {
+              id: lastCompleted.id,
+              total: lastCompleted.total,
+              itemsCount: lastCompleted.items?.length || 1,
+              tableNumber: currentTable.tableNumber,
+              whatsappUri: generateWhatsAppBillUri(lastCompleted),
+              timestamp: Date.now(),
+            };
+            setLastReceipt(receiptObj);
+            try {
+              localStorage.setItem(`scanbite_last_receipt_${slug}_${tableParam}`, JSON.stringify(receiptObj));
+            } catch {}
+          }
           setIsOrdersOpen(false);
-          showToast(lang === "hi" ? "टेबल का ऑर्डर पूरा हुआ। मेन्यू तैयार है! 🍽️" : "Order completed! Fresh menu ready 🍽️");
+          showToast(lang === "hi" ? "✨ टेबल का ऑर्डर पूरा हुआ। नए सिरे से मेन्यू तैयार है! 🍽️" : "✨ Order completed! Fresh menu ready for new order 🍽️");
         }
 
         prevOrdersCountRef.current = data.length;
@@ -983,35 +1046,6 @@ export default function CustomerTableMenu() {
     }
   };
 
-  // Generate WhatsApp Bill Receipt Link
-  const generateWhatsAppBillUri = (ord: Order) => {
-    if (!restaurant) return "#";
-    const phone = ord.customerPhone ? ord.customerPhone.replace(/\D/g, "") : "";
-    const itemsList = ord.items.map((it) => {
-      const variantStr = it.variantName ? ` [${it.variantName}]` : "";
-      const addonsStr = it.selectedAddons && it.selectedAddons.length > 0
-        ? `\n   ↳ + ${it.selectedAddons.map((a: any) => `${a.name} (+${restaurant.currencySymbol}${a.price})`).join(", ")}`
-        : "";
-      return `• ${it.quantity}x ${it.name}${variantStr} (${restaurant.currencySymbol}${it.price * it.quantity})${addonsStr}`;
-    }).join("\n");
-    const discountText = ord.discount && ord.discount > 0 ? `\n🎉 Discount: -${restaurant.currencySymbol}${ord.discount} (${ord.couponCode || "Coupon"})` : "";
-    const text = `🍽️ *${restaurant.name}*\n` +
-      `📍 Table: ${ord.tableNumber}\n` +
-      `🧾 Order: #${ord.id.slice(-4)}\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `${itemsList}\n` +
-      `━━━━━━━━━━━━━━━━\n` +
-      `Subtotal: ${restaurant.currencySymbol}${ord.subtotal}\n` +
-      `Taxes (GST ${restaurant.taxRatePercent}%): ${restaurant.currencySymbol}${ord.tax}` +
-      `${discountText}\n` +
-      `*Grand Total: ${restaurant.currencySymbol}${ord.total}*\n` +
-      `Payment Status: ${ord.paymentStatus === "paid" ? "✅ Paid" : "⚠️ Unpaid"} (${ord.paymentMethod?.replace("_", " ")})\n` +
-      (ord.paymentStatus !== "paid" && restaurant.upiId ? `Pay via UPI: ${restaurant.upiId}\n` : "") +
-      `\n🧾 *Official Tax Invoice PDF Bill:*\n${typeof window !== "undefined" ? window.location.origin : "https://scanbite-plum.vercel.app"}/receipt/${ord.id}\n` +
-      `\nThank you for dining with us! 🙏`;
-
-    return phone ? `https://wa.me/91${phone}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`;
-  };
 
   // Submit Star Rating
   const handleRatingSubmit = async (orderId: string, rating: number) => {
@@ -1129,6 +1163,17 @@ export default function CustomerTableMenu() {
           "मीठा": ["sweet", "dessert", "brownie", "rasmalai"],
           "चावल": ["rice", "biryani"],
           "छाछ": ["chaas", "buttermilk"],
+          "सब्जी": ["curry", "sabzi", "gravy"],
+          "पानी": ["water", "mineral"],
+          "चाय": ["tea", "chai"],
+          "कॉफी": ["coffee"],
+          "समोसा": ["samosa", "starter", "snack"],
+          "कबाब": ["kebab", "kabab", "tikka"],
+          "तंदूरी": ["tandoor", "tandoori"],
+          "रायता": ["raita"],
+          "सलाद": ["salad"],
+          "नूडल्स": ["noodles", "chinese"],
+          "सूप": ["soup"],
         };
 
         for (const [hindiWord, englishTerms] of Object.entries(hindiMap)) {
@@ -1262,7 +1307,7 @@ export default function CustomerTableMenu() {
         <div className="max-w-md mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200/60 flex items-center gap-1">
                   <span>📍 {currentTable?.tableNumber}</span>
@@ -1275,6 +1320,18 @@ export default function CustomerTableMenu() {
                 >
                   (change)
                 </button>
+                {lastReceipt && (
+                  <a
+                    href={lastReceipt.whatsappUri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2 py-0.5 rounded-md transition shadow-2xs"
+                    title={lang === "hi" ? "पिछली व्हाट्सएप बिल रसीद देखें" : "View your last WhatsApp bill receipt"}
+                  >
+                    <Receipt className="w-3 h-3 text-emerald-600" />
+                    <span>{lang === "hi" ? `रसीद #${lastReceipt.id.slice(-4)} 💬` : `Receipt #${lastReceipt.id.slice(-4)} 💬`}</span>
+                  </a>
+                )}
               </div>
               <h1 className="text-lg font-bold text-slate-900 leading-tight mt-0.5">{restaurant.name}</h1>
               {restaurant.tagline && (
@@ -2720,39 +2777,43 @@ export default function CustomerTableMenu() {
             <p className="text-xs text-slate-500 mb-3">
               {t.enterNamePrompt}
             </p>
-            <input
-              id="diner-name-modal-input"
-              name="tempDinerName"
-              aria-label={lang === "hi" ? "टेबल पर आपका नाम" : "Your Name at Table"}
-              type="text"
-              placeholder={lang === "hi" ? "जैसे: आकाश, राहुल, प्रिया" : "e.g. Aakash, Rahul, Priya"}
-              value={tempDinerName}
-              onChange={(e) => setTempDinerName(e.target.value)}
-              className="w-full text-base sm:text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-4"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const trimmed = tempDinerName.trim();
-                  handleNameChange(trimmed);
-                  joinTableCart(trimmed || undefined);
-                  setIsDinerNameModalOpen(false);
-                  showToast(trimmed ? (lang === "hi" ? `✅ स्वागत है ${trimmed}!` : `✅ Welcome, ${trimmed}!`) : (lang === "hi" ? "नाम अपडेट हुआ" : "Name updated"));
-                }}
-                className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95"
-              >
-                {lang === "hi" ? "सुरक्षित करें" : "Save & Join"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsDinerNameModalOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
-              >
-                {lang === "hi" ? "रद्द करें" : "Cancel"}
-              </button>
-            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = tempDinerName.trim();
+                handleNameChange(trimmed);
+                joinTableCart(trimmed || undefined);
+                setIsDinerNameModalOpen(false);
+                showToast(trimmed ? (lang === "hi" ? `✅ स्वागत है ${trimmed}!` : `✅ Welcome, ${trimmed}!`) : (lang === "hi" ? "नाम अपडेट हुआ" : "Name updated"));
+              }}
+            >
+              <input
+                id="diner-name-modal-input"
+                name="tempDinerName"
+                aria-label={lang === "hi" ? "टेबल पर आपका नाम" : "Your Name at Table"}
+                type="text"
+                placeholder={lang === "hi" ? "जैसे: आकाश, राहुल, प्रिया" : "e.g. Aakash, Rahul, Priya"}
+                value={tempDinerName}
+                onChange={(e) => setTempDinerName(e.target.value)}
+                className="w-full text-base sm:text-sm font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 mb-4"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-sm transition active:scale-95"
+                >
+                  {lang === "hi" ? "सुरक्षित करें" : "Save & Join"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDinerNameModalOpen(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                >
+                  {lang === "hi" ? "रद्द करें" : "Cancel"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
