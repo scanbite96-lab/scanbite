@@ -302,6 +302,21 @@
     - **Typo Fix (`src/app/founder-hq/page.tsx`):** Corrected "demo demo scheduled" in Tab 5 to "demo scheduled".
     - **Verification:** 100% of routes (all 23 routes) compiled with 0 TypeScript/Next.js errors (`cmd /c "npm run build"`).
 
+27. **Complete 360° End-to-End Platform Pipeline Audit & Route Resilience (Verified Nov 1, 2026):**
+    - **App Router Error & 404 Resilience (`src/app/error.tsx` & `src/app/not-found.tsx`):** Created robust root error and not-found boundaries styled to match ScanBite dark theme, ensuring any edge-case routing failure renders cleanly with graceful retry and Return Home actions.
+    - **Strict Security Gate for `/admin`:** Preserved `src/app/admin/route.ts` deterministically serving HTTP 404 with 0-byte payload, keeping the Super Admin command center protected strictly under `/founder-hq` with master passcode authentication.
+    - **Floor Staff Order Transition Permissions (`src/app/api/orders/route.ts`):** Authorized floor staff and captains with `canManageRequests` permission to advance kitchen orders from `ready` to `served`, enabling the 1-tap "Mark Delivered" workflow from mobile `/waiter` mode without requiring kitchen admin privileges.
+    - **Full-Spectrum Verification (`test-all-pipelines.js`):** Executed comprehensive 8-pipeline audit passing 100%:
+      1. Neon Cloud PostgreSQL & Prisma ORM: Connected and synced 3 hotels, 11 categories, 19 menu items, 15 tables, 13 orders, 11 leads.
+      2. Customer Table QR Ordering: Verified menu load, item customization, bilingual Hindi/English switch, order placement (ID `cmvxpf7dx0001815rnlaoxo70`), and live diner status polling.
+      3. Waiter Call & Dining Service: Dispatched instant service ping (Water on Table 4) and verified real-time staff resolution.
+      4. Kitchen KDS Lifecycle: Verified state transitions through all 4 stages: `pending` ➔ `in_progress` ➔ `ready` ➔ `served` & settled.
+      5. Menu Stock & Anti-Sold-Out Safeguard: Verified live stock toggle to Sold Out, immediate blocking of customer orders with informative error message, and clean restock.
+      6. Partner Leads & CRM Pipeline: Lead submission, storage in PostgreSQL, retrieval in `/founder-hq`, and status transition to `contacted`.
+      7. Security & Access Control: Verified strict 404 on `/admin`, HTTP 401 gate on `/api/admin`, and master passcode authorization.
+      8. Cloudflare Public Tunnel Gateway: Verified all public endpoints respond HTTP 200 OK globally.
+    - **Production Build:** All 23 static & dynamic App Router routes compiled with 0 errors (`cmd /c "npm run build"`).
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
