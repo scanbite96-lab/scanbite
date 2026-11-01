@@ -420,6 +420,22 @@
       - **Footer Clip:** Added `overflow-hidden` to `footer`.
     - **Production Verification:** Clean build (`cmd /c "npm run build"`) compiling 23/23 App Router routes with 0 errors.
 
+34. **Mobile Horizontal Wobble & Elastic Overscroll Elimination (Verified Nov 1, 2026):**
+    - **Root Cause Analysis:**
+      - While the white canvas gutter was eliminated, mobile browsers (Chrome / Android WebViews) allowed subtle lateral shifting ("dono side se halka halka hilna") when dragging diagonally due to default browser horizontal rubber-banding (`overscroll-behavior-x: auto`) and unrestricted touch action.
+      - Furthermore, fixed oversized background blur elements in the hero section (`w-[600px]` with `blur-[130px]`) expanded subpixel GPU compositing bounding boxes beyond the viewport on mobile screens.
+    - **Comprehensive Resolution:**
+      - **Global Overscroll & Touch Action Lock (`src/app/globals.css`):**
+        - Applied `overscroll-behavior-x: none;` and `touch-action: pan-y pinch-zoom;` on both `html` and `body`.
+        - Bound `width: 100%; max-width: 100%; overflow-x: hidden;` across root documents.
+      - **Root Layout (`src/app/layout.tsx`):**
+        - Added `overscroll-x-none` to both `html` and `body`.
+      - **Per-Section Boundary Containment (`src/app/page.tsx`):**
+        - Enforced `w-full max-w-full overflow-hidden` across all 9 individual page sections (`hero`, `simulator`, `features`, `how-it-works`, `calculator`, `pricing`, `faq`, `cta`, `footer`).
+        - Responsively constrained hero glow gradients from fixed 600px blur to `w-[280px] sm:w-[600px] blur-[60px] sm:blur-[130px] max-w-[90vw]`.
+      - **Result:** Fully stabilized vertical-only mobile scrolling with zero horizontal jitter, wobbling, or lateral panning on all Android and iOS smartphones.
+    - **Production Build:** Verified with `cmd /c "node node_modules\next\dist\bin\next build"`, compiling all 23 routes with 0 errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

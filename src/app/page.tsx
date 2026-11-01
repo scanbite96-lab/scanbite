@@ -68,9 +68,9 @@ export default function SaaSPlatformHome() {
   )}`;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white w-full max-w-full overflow-x-clip">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-orange-500 selection:text-white w-full max-w-full overflow-x-hidden relative overscroll-x-none">
       {/* Top Navbar */}
-      <header className="border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md sticky top-0 z-50">
+      <header className="border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-md sticky top-0 z-50 w-full max-w-full">
         <div className="max-w-7xl mx-auto px-3.5 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2 sm:gap-3 md:gap-6">
           {/* Brand Logo & SaaS Badge */}
           <Link href="/" className="flex items-center gap-2 sm:gap-2.5 shrink-0 mr-1 sm:mr-4 xl:mr-8 group">
@@ -219,10 +219,10 @@ export default function SaaSPlatformHome() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-14 pb-16 sm:pt-20 sm:pb-24">
-        {/* Glow gradients */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-orange-600/20 blur-[130px] pointer-events-none rounded-full" />
-        <div className="absolute top-1/3 left-1/4 w-[300px] h-[250px] bg-amber-500/10 blur-[100px] pointer-events-none rounded-full" />
+      <section className="relative overflow-hidden pt-14 pb-16 sm:pt-20 sm:pb-24 w-full max-w-full">
+        {/* Glow gradients - sized responsively to prevent mobile compositing overscroll wobble */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] sm:w-[600px] h-[180px] sm:h-[350px] bg-orange-600/20 blur-[60px] sm:blur-[130px] pointer-events-none rounded-full max-w-[90vw]" />
+        <div className="absolute top-1/3 left-1/4 w-[160px] sm:w-[300px] h-[140px] sm:h-[250px] bg-amber-500/10 blur-[50px] sm:blur-[100px] pointer-events-none rounded-full max-w-[70vw]" />
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-950/50 border border-orange-500/30 text-orange-400 text-xs font-bold mb-6">
@@ -259,12 +259,12 @@ export default function SaaSPlatformHome() {
           </p>
 
           {/* Interactive Live Demo Buttons */}
-          <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-2xl mx-auto">
+          <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-2xl mx-auto w-full px-2 sm:px-0">
             {/* Pillar 1: Customer Menu */}
             <Link
               href="/r/grand-spice/t/tbl-4"
               target="_blank"
-              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto flex-1 px-4 sm:px-5 py-3.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-orange-500/20 transition active:scale-95 flex items-center justify-center gap-2 text-center"
             >
               <Smartphone className="w-4 h-4 shrink-0 text-slate-950" />
               <span>{lang === "hi" ? "कस्टमर टेबल मेन्यू (Table 4 Demo)" : "Customer QR Menu (Table 4 Demo)"}</span>
@@ -274,7 +274,7 @@ export default function SaaSPlatformHome() {
             <Link
               href="/dashboard?demo=true"
               target="_blank"
-              className="w-full sm:w-auto flex-1 px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 hover:border-slate-600 transition active:scale-95 flex items-center justify-center gap-2"
+              className="w-full sm:w-auto flex-1 px-4 sm:px-5 py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm rounded-2xl border border-slate-700/80 hover:border-slate-600 transition active:scale-95 flex items-center justify-center gap-2 text-center"
             >
               <ChefHat className="w-4 h-4 text-orange-400 shrink-0" />
               <span>{lang === "hi" ? "किचन KDS व ओनर कंसोल (Live Demo)" : "Kitchen KDS & Owner Console (Live Demo)"}</span>
@@ -320,7 +320,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Interactive Product Experience Simulator */}
-      <section id="simulator" className="py-16 bg-slate-900/40 border-t border-slate-800/80">
+      <section id="simulator" className="py-16 bg-slate-900/40 border-t border-slate-800/80 w-full max-w-full overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-10">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-950/60 border border-orange-500/30 text-orange-400 text-xs font-bold mb-3">
@@ -587,7 +587,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Feature Highlights Section */}
-      <section id="features" className="py-20 bg-slate-900/50 border-t border-slate-800">
+      <section id="features" className="py-20 bg-slate-900/50 border-t border-slate-800 w-full max-w-full overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-xs font-bold uppercase tracking-widest text-orange-400 mb-2">
@@ -740,7 +740,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* How it Works Section */}
-      <section id="how-it-works" className="py-20 border-t border-slate-800/80 bg-slate-900/30">
+      <section id="how-it-works" className="py-20 border-t border-slate-800/80 bg-slate-900/30 w-full max-w-full overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-xs font-bold uppercase tracking-widest text-orange-400 mb-2">
@@ -800,7 +800,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Interactive ROI Calculator Section */}
-      <section id="calculator" className="py-20 border-t border-slate-800 bg-slate-900/50">
+      <section id="calculator" className="py-20 border-t border-slate-800 bg-slate-900/50 w-full max-w-full overflow-hidden">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-950/60 border border-orange-500/30 text-orange-400 text-xs font-bold mb-3">
@@ -923,7 +923,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-20 border-t border-slate-800">
+      <section id="pricing" className="py-20 border-t border-slate-800 w-full max-w-full overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-16">
             <h2 className="text-xs font-bold uppercase tracking-widest text-orange-400 mb-2">
@@ -1082,7 +1082,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Frequently Asked Questions (FAQ) Section */}
-      <section id="faq" className="py-20 border-t border-slate-800/80 bg-slate-900/30">
+      <section id="faq" className="py-20 border-t border-slate-800/80 bg-slate-900/30 w-full max-w-full overflow-hidden">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-950/60 border border-orange-500/30 text-orange-400 text-xs font-bold mb-3">
@@ -1162,7 +1162,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Ready to Modernize CTA Banner */}
-      <section className="py-16 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white relative overflow-hidden">
+      <section className="py-16 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 text-white relative overflow-hidden w-full max-w-full">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
           <h2 className="text-2xl sm:text-4xl font-black tracking-tight mb-4">
             {lang === "hi" 
@@ -1198,7 +1198,7 @@ export default function SaaSPlatformHome() {
       </section>
 
       {/* Comprehensive SaaS Footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 pt-16 pb-12 text-slate-400 overflow-hidden">
+      <footer className="border-t border-slate-800 bg-slate-950 pt-16 pb-12 text-slate-400 overflow-hidden w-full max-w-full">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 mb-12">
             {/* Col 1: Brand Info */}

@@ -23,8 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth bg-slate-950">
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full max-w-full">
+    <html lang="en" className="scroll-smooth bg-slate-950 overscroll-x-none">
+      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-orange-500 selection:text-white overflow-x-hidden w-full max-w-full overscroll-x-none">
         {children}
       </body>
     </html>
