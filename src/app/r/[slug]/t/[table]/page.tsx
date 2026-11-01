@@ -1664,7 +1664,7 @@ export default function CustomerTableMenu() {
                       🔥 {lang === "hi" ? `सिर्फ ${item.stockCount} बचे` : `Only ${item.stockCount} left`}
                     </div>
                   ) : null}
-                  {item.isBestseller && item.isAvailable && (!item.stockCount || item.stockCount > 0) && (
+                  {item.isBestseller && item.isAvailable && (!item.stockCount || item.stockCount === -1 || item.stockCount > 0) && (
                     <div className="absolute top-1.5 left-1.5 bg-orange-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow">
                       {t.bestseller}
                     </div>
@@ -1731,7 +1731,7 @@ export default function CustomerTableMenu() {
                     )}
 
                     {/* Add Button or Stepper */}
-                    {item.isAvailable && (item.stockCount === null || item.stockCount === undefined || item.stockCount > 0) ? (
+                    {item.isAvailable && (item.stockCount === null || item.stockCount === undefined || item.stockCount === -1 || item.stockCount > 0) ? (
                       hasCustomisation ? (
                         <div className="flex items-center gap-1.5">
                           {inCartQty > 0 && (

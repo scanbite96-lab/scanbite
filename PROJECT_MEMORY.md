@@ -385,6 +385,25 @@
       - Added an inline **"← Back to Website"** link directly in the sticky top demo banner on `/dashboard`.
       - Updated `/login/page.tsx` redirect to use `RedirectType.replace`, completely preventing browser history back-button redirect loops.
 
+32. **Customer Table QR Ordering Workflow Hardening, Session Lifecycle Auto-Completion & Inventory Availability Fix (Verified Nov 1, 2026):**
+    - **Session Lifecycle Auto-Completion & Stale Orders Flush (`src/lib/store.ts`, `src/lib/demoData.ts`):**
+      - Resolved the core problem where customer tables continued displaying previous customer orders even after food was served and the bill was paid.
+      - In `updateOrderStatus` and `updateDemoOrderStatus`: When an order reaches both `status === "served"` and `paymentStatus === "paid"`, its lifecycle status automatically updates to `"completed"`.
+      - In `getTableOrders(restaurantId, tableId, activeOnly = true)`: Added strict exclusion of served & paid orders (`NOT: { status: "served", paymentStatus: "paid" }`), plus a 2.5-hour active session cutoff (`createdAt: { gte: activeCutoff }`) so stale tickets are never loaded on fresh QR scans.
+      - On customer front-end: When active orders drop from >0 to 0 (upon bill payment/settlement), automatically captures the digital receipt into `lastReceipt` (`scanbite_last_receipt` localStorage for 6 hours), auto-closes `isOrdersOpen(false)`, and triggers celebratory toast: `✨ टेबल का ऑर्डर पूरा हुआ। नए सिरे से मेन्यू तैयार है! 🍽️`.
+    - **Unlimited Inventory Stock (-1) & Portion Availability Rendering:**
+      - Resolved critical bug where dishes with `stockCount: -1` (representing unlimited daily batches / ♾️) were improperly evaluating as false in `item.stockCount > 0` checks and rendering as "Sold Out".
+      - Updated availability conditions in `src/app/r/[slug]/t/[table]/page.tsx` (`item.stockCount === -1 || item.stockCount > 0`) ensuring all menu items with untracked or unlimited batches render active with prominent `ADD` or `CUSTOMISE` buttons.
+    - **WhatsApp Bill Receipt Phone Normalization:**
+      - Normalized diner phone numbers to take the last 10 digits before prefixing `91`, preventing invalid 12/13-digit WhatsApp URLs like `91919876543210` or `9109876543210`.
+    - **Diner Name Attribution in Group Ordering:**
+      - Fixed ordering bug where items added prior to setting a custom diner name defaulted to "Guest" in the kitchen KDS. Items are now accurately re-attributed to the active diner's name upon order placement.
+    - **Split Bill Dynamic UPI URI Sanitization:**
+      - Fully URL-encoded transaction note descriptions in `OrderUpiBox` (`tn=${encodeURIComponent(noteText)}`), ensuring 100% compatibility across all Indian UPI payment applications (GPay, PhonePe, Paytm, Cred).
+    - **1-Tap Coupon Discard & Bilingual Empty State:**
+      - Added 1-tap `(Remove / हटाएं)` link in the promo code bar for switching or clearing discounts without dumping the cart.
+      - Fully localized orders drawer empty state and close action buttons in natural Hindi when `lang === "hi"`.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)
