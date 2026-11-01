@@ -365,7 +365,8 @@
 30. **24x7 Partner Support & Emergency Helpline Desk in Owner Dashboard (Verified Nov 1, 2026):**
     - **Dashboard Header Integration:** Added a prominent `🎧 24x7 Helpline` button in the dashboard top navigation bar for instant access by restaurant owners and kitchen managers.
     - **Floating Emergency SOS Pill:** Added an elegant, non-intrusive floating `🎧 24x7 Helpline • 📞 98765 43210` pill in the bottom-left corner of the dashboard across all operational views.
-    - **Interactive Emergency Help Desk Modal:**
+    - **Interactive Emergency Help Desk Modal (Fully Wired & Fixed):**
+      - Resolved modal rendering gap where clicking `24x7 Helpline` changed state but modal JSX had been omitted from the template tree.
       1. **Priority WhatsApp SOS (1-Tap):** Pre-fills restaurant name, slug, owner name, and phone into WhatsApp chat (`+91 98765 43210`) with ~2-minute response target.
       2. **Direct Phone Call Helpline (1-Tap):** Direct call to official helpline `tel:+919876543210`.
       3. **Instant Support Ticket Logging (`POST /api/inquiries`):** Direct submission form where owners categorize issues (Sound alert, QR print, Waiter app, UPI payments, Menu updates, KDS freeze) and write notes. Automatically dispatched to Neon PostgreSQL and immediately visible in `/founder-hq` with emergency priority.

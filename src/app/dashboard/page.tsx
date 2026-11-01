@@ -2551,13 +2551,14 @@ export default function RestaurantDashboard() {
 
                 {/* 24x7 Partner Support & Emergency Helpline Button */}
                 <button
+                  type="button"
                   onClick={() => {
                     setTicketPhone(restaurant?.phone || "");
                     setTicketSuccessMsg(null);
                     setQuickFixFeedback(null);
                     setShowSupportModal(true);
                   }}
-                  className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap cursor-pointer active:scale-95"
+                  className="bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 hover:border-emerald-400 text-emerald-400 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-xs whitespace-nowrap cursor-pointer active:scale-95"
                   title="ScanBite 24x7 Partner Helpline & Instant Support Desk"
                 >
                   <Headphones className="w-3.5 h-3.5 text-emerald-400" />
@@ -5026,6 +5027,63 @@ export default function RestaurantDashboard() {
                 {isSavingSettings ? "Saving to Database..." : "Save Settings to Database"}
               </button>
             </div>
+
+            {/* 24x7 Partner Support & Emergency Helpline Desk Card */}
+            <div className="pt-6 border-t border-slate-100">
+              <div className="bg-gradient-to-br from-emerald-950/20 via-slate-900 to-slate-950 border border-emerald-500/30 rounded-2xl p-4 sm:p-5 text-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                      <Headphones className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        <span>24x7 Partner Helpline & Operations Desk</span>
+                        <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                          Official
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Operational emergency, live table orders, QR standees, or tech setup help.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTicketPhone(restaurant?.phone || "");
+                      setTicketSuccessMsg(null);
+                      setQuickFixFeedback(null);
+                      setShowSupportModal(true);
+                    }}
+                    className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition shadow-md shadow-emerald-500/20 active:scale-95 shrink-0 whitespace-nowrap self-start sm:self-auto cursor-pointer"
+                  >
+                    Open Help Desk
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800">
+                  <a
+                    href="tel:+919876543210"
+                    className="flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white p-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 transition"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Call: +91 98765 43210</span>
+                  </a>
+                  <a
+                    href={`https://wa.me/919876543210?text=${encodeURIComponent(
+                      `🚨 *SCANBITE PARTNER SUPPORT REQUEST*\nRestaurant: ${restaurant?.name || "Restaurant"} (${restaurant?.slug || "slug"})\nOwner: ${authUser?.ownerName || restaurant?.ownerName || "Partner"}\nPhone: ${restaurant?.phone || ""}\nI need assistance with my live operations.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs font-bold text-slate-300 hover:text-white p-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 transition"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WhatsApp: +91 98765 43210</span>
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
@@ -7161,6 +7219,276 @@ export default function RestaurantDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ===================== MODAL: 24x7 PARTNER HELP DESK & EMERGENCY SOS ===================== */}
+      {showSupportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl relative my-auto animate-in fade-in zoom-in-95 duration-150 text-slate-100">
+            {/* Modal Top Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Headphones className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                    <span>ScanBite Partner Help Desk</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                      24x7 Priority
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Live operational support for restaurant owners and kitchen managers
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSupportModal(false)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                title="Close support modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Action Contact Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4">
+              {/* WhatsApp Priority SOS */}
+              <a
+                href={`https://wa.me/919876543210?text=${encodeURIComponent(
+                  `🚨 *SCANBITE PARTNER SUPPORT REQUEST*\n\n` +
+                  `Restaurant: ${restaurant?.name || "Restaurant"} (${restaurant?.slug || "slug"})\n` +
+                  `Owner/Staff: ${authUser?.ownerName || restaurant?.ownerName || "Partner"}\n` +
+                  `Phone: ${restaurant?.phone || ticketPhone || "Not specified"}\n\n` +
+                  `Namaste ScanBite Team, mujhe mere restaurant dashboard/operations me urgent help chahiye.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-4 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/40 hover:border-emerald-400 rounded-xl transition flex items-center gap-3 group active:scale-[0.98]"
+              >
+                <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 shrink-0 font-bold shadow-md shadow-emerald-500/30 group-hover:scale-105 transition">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                    <span>Priority WhatsApp SOS</span>
+                    <span className="text-[9px] bg-emerald-500/20 px-1.5 py-0.2 rounded font-bold">~2 min reply</span>
+                  </div>
+                  <div className="text-sm font-extrabold text-white mt-0.5">+91 98765 43210</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">1-Tap direct chat with tech engineering</div>
+                </div>
+              </a>
+
+              {/* Direct Phone Call SOS */}
+              <a
+                href="tel:+919876543210"
+                className="p-4 bg-blue-950/40 hover:bg-blue-900/50 border border-blue-500/40 hover:border-blue-400 rounded-xl transition flex items-center gap-3 group active:scale-[0.98]"
+              >
+                <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center text-slate-950 shrink-0 font-bold shadow-md shadow-blue-500/30 group-hover:scale-105 transition">
+                  <PhoneCall className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-blue-400 flex items-center gap-1.5">
+                    <span>Direct Phone Helpline</span>
+                    <span className="text-[9px] bg-blue-500/20 px-1.5 py-0.2 rounded font-bold">Instant Call</span>
+                  </div>
+                  <div className="text-sm font-extrabold text-white mt-0.5">+91 98765 43210</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Direct line to operations desk</div>
+                </div>
+              </a>
+            </div>
+
+            {/* 10-Second Quick Self-Troubleshooters */}
+            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-xl mb-4">
+              <div className="text-[11px] font-black text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>⚡ 10-Second Instant Troubleshooters (तुरंत स्व-समाधान)</span>
+                {quickFixFeedback && (
+                  <span className="text-[10px] text-emerald-400 font-bold animate-pulse">
+                    {quickFixFeedback}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!soundEnabled) setSoundEnabled(true);
+                    playNewOrderChime();
+                    setQuickFixFeedback("🔊 Chime played! AudioContext active.");
+                    setTimeout(() => setQuickFixFeedback(null), 3000);
+                  }}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-left transition group cursor-pointer"
+                >
+                  <div className="text-[11px] font-bold text-orange-400 flex items-center gap-1">
+                    <Volume2 className="w-3 h-3" />
+                    <span>Test Sound</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">Unmute audio alerts</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (restaurant && typeof window !== "undefined") {
+                      const url = `${window.location.origin}/waiter?slug=${restaurant.slug}`;
+                      navigator.clipboard.writeText(url);
+                      setQuickFixFeedback("📋 Waiter URL copied to clipboard!");
+                      setTimeout(() => setQuickFixFeedback(null), 3000);
+                    }
+                  }}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-left transition group cursor-pointer"
+                >
+                  <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1">
+                    <Smartphone className="w-3 h-3" />
+                    <span>Waiter Link</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">Copy mobile captain link</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("settings");
+                    setShowSupportModal(false);
+                  }}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-left transition group cursor-pointer"
+                >
+                  <div className="text-[11px] font-bold text-purple-400 flex items-center gap-1">
+                    <CreditCard className="w-3 h-3" />
+                    <span>UPI VPA</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">Check payment QR setup</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("tables");
+                    setShowSupportModal(false);
+                  }}
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-left transition group cursor-pointer"
+                >
+                  <div className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                    <LayoutGrid className="w-3 h-3" />
+                    <span>Table QRs</span>
+                  </div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">Print QR standees</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Emergency Support Ticket Form */}
+            <form onSubmit={handleRaiseSupportTicket} className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <LifeBuoy className="w-3.5 h-3.5 text-orange-400" />
+                  <span>Raise Urgent Support Ticket (इमरजेंसी सपोर्ट टिकट भेजें)</span>
+                </label>
+                <span className="text-[10px] text-slate-400">Direct to Founder HQ</span>
+              </div>
+
+              {ticketSuccessMsg ? (
+                <div className="p-3.5 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs font-bold flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>{ticketSuccessMsg}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 mb-1 block">
+                        Issue Category / समस्या का प्रकार
+                      </label>
+                      <select
+                        value={ticketCategory}
+                        onChange={(e) => setTicketCategory(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-orange-500"
+                      >
+                        <option value="Sound & Chime Alert Issue">Sound & Chime Alert Issue (आवाज़ नहीं आ रही)</option>
+                        <option value="QR Code Printing / Download">QR Code Printing / Download (QR में समस्या)</option>
+                        <option value="Waiter Captain Ordering App">Waiter Captain Mobile Mode (वेटर ऐप दिक्कत)</option>
+                        <option value="UPI / Online Payment Setup">UPI / Online Payment Setup (पेमेंट VPA)</option>
+                        <option value="Menu / Price / Stock Update">Menu / Price / Stock Update (मेन्यू बदलाव)</option>
+                        <option value="KDS Kitchen Display Stuck / Refresh">KDS Kitchen Stuck / Auto-Refresh Issue</option>
+                        <option value="Other Operational Emergency">Other Operational Emergency (अन्य समस्या)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-slate-400 mb-1 block">
+                        Callback Phone / संपर्क नंबर
+                      </label>
+                      <input
+                        type="tel"
+                        value={ticketPhone}
+                        onChange={(e) => setTicketPhone(e.target.value)}
+                        placeholder={restaurant?.phone || "e.g. 9876543210"}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 mb-1 block">
+                      Describe What Happened / क्या परेशानी आ रही है?
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={ticketMessage}
+                      onChange={(e) => setTicketMessage(e.target.value)}
+                      placeholder="e.g. Table 4 ka order KDS me late dikh raha hai ya kitchen chime nahi baj raha..."
+                      required
+                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-orange-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowSupportModal(false)}
+                      className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingTicket || !ticketMessage.trim()}
+                      className="px-5 py-2 bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white rounded-xl text-xs font-bold shadow-md shadow-orange-600/30 flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isSubmittingTicket ? "Dispatching..." : "Send Ticket to Founder HQ"}</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Floating 24x7 Partner Helpline Pill Button (Always Accessible on Screen) */}
+      {restaurant && (
+        <button
+          type="button"
+          onClick={() => {
+            setTicketPhone(restaurant?.phone || "");
+            setTicketSuccessMsg(null);
+            setQuickFixFeedback(null);
+            setShowSupportModal(true);
+          }}
+          className="fixed bottom-5 left-5 z-40 bg-slate-900/95 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 hover:border-emerald-400/70 shadow-2xl px-3.5 py-2 rounded-full text-xs font-bold flex items-center gap-2 backdrop-blur transition-all active:scale-95 group cursor-pointer"
+          title="ScanBite 24x7 Partner Helpline & Instant Support Desk"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <Headphones className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+          <span className="text-white font-extrabold">24x7 Helpline</span>
+          <span className="text-emerald-400/80 font-mono text-[11px] hidden sm:inline">📞 98765 43210</span>
+        </button>
       )}
 {/* Global Dashboard Toast Feedback */}
       {staffToast && (
