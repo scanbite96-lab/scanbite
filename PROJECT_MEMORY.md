@@ -456,6 +456,17 @@
       - Passed 100% of tests in `scripts/test-advanced-security.js` and `test-all-pipelines.js` (8/8 pipelines passing).
       - Production Next.js build compiled 23/23 App Router routes with 0 TypeScript/ESLint errors.
 
+36. **Super Admin Standee Kit A4 High-Resolution Print Engine (Verified Nov 3, 2026):**
+    - **Root Cause Resolution for Blank Standee Print (`/founder-hq`):**
+      - In `src/app/globals.css`, `@media print` previously hid all DOM elements under `body * { visibility: hidden; }` and only whitelisted `#printable-qr-grid`. Because the Super Admin modal used `#printable-qr-kit`, all standee cards were rendered completely invisible during print.
+      - Whitelisted `#printable-qr-kit, #printable-qr-kit *` in `src/app/globals.css` with clean layout overrides (`position: absolute; width: 100%; max-height: none; overflow: visible; background: #ffffff; color: #000000;`).
+    - **Isolated Iframe Print Engine (`handlePrintAllStandees`):**
+      - Built an isolated printable iframe pipeline that dynamically constructs a pure white, high-DPI A4 printable document (`@page { size: A4 portrait; margin: 10mm; }`).
+      - Formats standees in a balanced 2-column grid (`display: grid; grid-template-columns: repeat(2, 1fr); gap: 12mm;`) with acrylic tent cutting guidelines (`✂️ Cut along line & place in acrylic stand`).
+      - Completely isolates the print output from the Super Admin modal's dark backdrop (`fixed inset-0 bg-black/85`), eliminating clipping, scrolling glitches, and dark-backdrop bleeds across Chrome, Safari, Firefox, and Edge.
+      - Includes automatic fallback to `window.print()` and cleans up the temporary DOM iframe after printing.
+    - **Build & Quality Verification:** Full Next.js production build (`npm run build`) passed with 23/23 pages compiled with 0 errors.
+
 ---
 
 ## 📋 Prioritized Feature Backlog (ROADMAP)

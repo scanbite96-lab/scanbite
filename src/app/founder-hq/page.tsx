@@ -1004,6 +1004,230 @@ ScanBite Billing Operations`;
     }
   };
 
+  // Print All Standees Kit via Dedicated Isolated Iframe
+  const handlePrintAllStandees = () => {
+    if (!selectedRestForQr) return;
+    if (loadingQrKit) {
+      showToast("⏳ Please wait, QR standees are still generating...");
+      return;
+    }
+    if (tableQrList.length === 0) {
+      showToast("⚠️ No tables registered for this restaurant yet.");
+      return;
+    }
+
+    try {
+      const oldFrame = document.getElementById("scanbite-qr-print-frame");
+      if (oldFrame) {
+        oldFrame.remove();
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.id = "scanbite-qr-print-frame";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "none";
+      iframe.style.opacity = "0";
+      iframe.style.pointerEvents = "none";
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        window.print();
+        return;
+      }
+
+      const cardsHtml = tableQrList
+        .map(
+          (t) => `
+        <div class="standee-card">
+          <div class="card-inner">
+            <div class="brand-tag">⚡ SCANBITE DIGITAL MENU</div>
+            <div class="restaurant-title">${selectedRestForQr.name}</div>
+            
+            <div class="qr-container">
+              <img src="${t.qrDataUrl}" alt="${t.tableNumber}" />
+            </div>
+
+            <div class="table-pill">${t.tableNumber}</div>
+            
+            <div class="seats-info">Table Capacity: <strong>${t.seats || 4} Guests</strong></div>
+            
+            <div class="instructions-box">
+              <span class="icon">📱</span>
+              <span>Apne phone camera se scan karein aur direct order karein</span>
+            </div>
+
+            <div class="scan-subtext">Scan with Phone Camera to View Menu &amp; Order</div>
+
+            <div class="cut-indicator">
+              <span>✂️ Cut along line &amp; place in acrylic stand</span>
+            </div>
+          </div>
+        </div>
+      `
+        )
+        .join("");
+
+      iframeDoc.open();
+      iframeDoc.write(`
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <title>${selectedRestForQr.name} — Table QR Standees Kit</title>
+            <style>
+              @page {
+                size: A4 portrait;
+                margin: 10mm;
+              }
+              *, *:before, *:after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                background: #ffffff;
+                color: #0f172a;
+              }
+              .standee-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12mm;
+                width: 100%;
+              }
+              .standee-card {
+                break-inside: avoid;
+                page-break-inside: avoid;
+                border: 2px dashed #94a3b8;
+                border-radius: 18px;
+                padding: 18px 14px;
+                background: #ffffff;
+                text-align: center;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                min-height: 120mm;
+              }
+              .card-inner {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+              }
+              .brand-tag {
+                font-size: 10px;
+                font-weight: 900;
+                letter-spacing: 2.5px;
+                color: #ea580c;
+                text-transform: uppercase;
+                margin-bottom: 4px;
+              }
+              .restaurant-title {
+                font-size: 16px;
+                font-weight: 800;
+                color: #0f172a;
+                margin-bottom: 10px;
+                line-height: 1.2;
+                max-width: 220px;
+              }
+              .qr-container {
+                background: #ffffff;
+                padding: 10px;
+                border: 1.5px solid #e2e8f0;
+                border-radius: 16px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .qr-container img {
+                width: 145px;
+                height: 145px;
+                display: block;
+              }
+              .table-pill {
+                background: #0f172a;
+                color: #ffffff;
+                font-size: 15px;
+                font-weight: 900;
+                padding: 6px 24px;
+                border-radius: 9999px;
+                margin-bottom: 6px;
+                letter-spacing: 0.5px;
+                box-shadow: 0 2px 6px rgba(15,23,42,0.25);
+              }
+              .seats-info {
+                font-size: 11px;
+                color: #475569;
+                margin-bottom: 8px;
+              }
+              .instructions-box {
+                background: #fff7ed;
+                border: 1px solid #fed7aa;
+                border-radius: 10px;
+                padding: 6px 10px;
+                font-size: 10.5px;
+                font-weight: 700;
+                color: #9a3412;
+                margin-bottom: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+                max-width: 240px;
+              }
+              .scan-subtext {
+                font-size: 9.5px;
+                color: #64748b;
+                margin-bottom: 10px;
+              }
+              .cut-indicator {
+                font-size: 9px;
+                color: #94a3b8;
+                font-style: italic;
+                border-top: 1px dotted #cbd5e1;
+                padding-top: 6px;
+                width: 100%;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="standee-grid">
+              ${cardsHtml}
+            </div>
+          </body>
+        </html>
+      `);
+      iframeDoc.close();
+
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          console.error("Print frame error:", e);
+          window.print();
+        } finally {
+          setTimeout(() => {
+            iframe.remove();
+          }, 3000);
+        }
+      }, 500);
+    } catch (err) {
+      console.error("Failed to print standees:", err);
+      window.print();
+    }
+  };
+
   // Export Restaurants to CSV
   const handleExportRestaurantsCsv = () => {
     if (restaurants.length === 0) {
@@ -3164,8 +3388,8 @@ ScanBite Billing Operations`;
 
       {/* ================= MODAL 5: COMPLETE QR STANDEE KIT ================= */}
       {isQrKitModalOpen && selectedRestForQr && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 print:p-0 print:static print:bg-white print:backdrop-blur-none">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl relative overflow-hidden print:border-none print:shadow-none print:max-h-none print:overflow-visible print:bg-white print:w-full print:max-w-none">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-800/80 flex items-center justify-between no-print">
               <div className="flex items-center gap-3">
@@ -3184,10 +3408,11 @@ ScanBite Billing Operations`;
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-cyan-500/20 transition flex items-center gap-1.5"
+                  onClick={handlePrintAllStandees}
+                  className="px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-cyan-500/25 transition flex items-center gap-2 cursor-pointer active:scale-95"
+                  title="Print all table QR code standees on A4 sheets"
                 >
-                  <Printer className="w-3.5 h-3.5" />
+                  <Printer className="w-4 h-4" />
                   <span>Print All Standees</span>
                 </button>
                 <button
@@ -3291,19 +3516,18 @@ ScanBite Billing Operations`;
                 display: none !important;
               }
               #printable-qr-kit {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
+                position: static !important;
                 width: 100% !important;
                 background: white !important;
                 padding: 10px !important;
                 overflow: visible !important;
-                z-index: 99999 !important;
+                max-height: none !important;
+                display: block !important;
               }
               .print-card {
                 break-inside: avoid;
                 page-break-inside: avoid;
-                border: 2px solid #000 !important;
+                border: 2px dashed #94a3b8 !important;
                 margin-bottom: 20px !important;
               }
             }
